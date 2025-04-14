@@ -35,39 +35,39 @@ ui <- dashboardPage(
                            numericInput("years_of_college", "Years of College", value = 4, min = 1, max = 10, step = 1)
                     ),
                     column(3,
-                           numericInput("age_at_start_of_investing", "Age at Start of Investing", 
+                           numericInput("age_initial", "Age at Start of Investing", 
                                         value = 0, min = 0, max = 17, step = 1)
                     ),
                     column(3,
-                           numericInput("age_at_start_of_first_year_of_higher_education", 
+                           numericInput("age_college_start", 
                                         "Age at Start of Higher Education", value = 18, min = 16, max = 25, step = 1)
                     ),
                     column(3,
-                           numericInput("year_at_start_of_investing", "Year at Start of Investing", 
+                           numericInput("year_initial", "Year at Start of Investing", 
                                         value = 2025, min = 2025, max = 2050, step = 1)
                     )
                   ),
                   fluidRow(
                     column(4,
-                           numericInput("inflation_of_higher_education_expected_annual", 
+                           numericInput("pctpoint_inflation", 
                                         "Expected Annual Education Inflation (%)", 
                                         value = 4, min = 0, max = 10, step = 0.1)
                     ),
                     column(4,
-                           numericInput("multiplier_to_increase_annual_allocation", 
+                           numericInput("pctpoint_principal", 
                                         "Annual Increase in Contributions (%)", 
                                         value = 4, min = 0, max = 10, step = 0.1)
                     ),
                     column(4,
-                           numericInput("growth_of_primary_investment_vehicle_expected_annual", 
-                                        "Expected Growth - Primary Vehicle (%)", 
+                           numericInput("pctpoint_primary", 
+                                        "Expected Growth - Primary Fund (%)", 
                                         value = 7, min = 0, max = 15, step = 0.1)
                     )
                   ),
                   fluidRow(
                     column(4,
-                           numericInput("growth_of_secondary_investment_vehicle_expected_annual", 
-                                        "Expected Growth - Secondary Vehicle (%)", 
+                           numericInput("pctpoint_secondary", 
+                                        "Expected Growth - Secondary Fund (%)", 
                                         value = 10, min = 0, max = 15, step = 0.1)
                     ),
                     column(8,
@@ -92,8 +92,8 @@ ui <- dashboardPage(
               # Summary metrics panel
               fluidRow(
                 valueBoxOutput("total_cost_box", width = 4),
-                valueBoxOutput("primary_allocation_box", width = 4),
-                valueBoxOutput("secondary_allocation_box", width = 4)
+                valueBoxOutput("primary_principal_box", width = 4),
+                valueBoxOutput("secondary_principal_box", width = 4)
               ),
               
               # Results panel with tabs
@@ -177,13 +177,13 @@ ui <- dashboardPage(
               fluidRow(
                 box(
                   title = "Investment Allocations by Year", width = 12, status = "info",
-                  DTOutput("investment_allocations_table")
+                  DTOutput("investment_principals_table")
                 )
               ),
               fluidRow(
                 box(
                   title = "Annual Investment Allocations", width = 12, status = "info",
-                  plotOutput("annual_allocations_chart", height = "400px")
+                  plotOutput("annual_principals_chart", height = "400px")
                 )
               )
       ),
@@ -198,15 +198,15 @@ ui <- dashboardPage(
                 tags$ul(
                   tags$li("Actual and projected college costs including tuition, fees, housing, meals, books, transportation, and personal expenses"),
                   tags$li("Expected inflation rates for higher education"),
-                  tags$li("Investment growth rates for different investment vehicles"),
+                  tags$li("Investment growth rates for different investment funds"),
                   tags$li("Annual increases in your contributions")
                 ),
                 p("Key Concepts:"),
                 tags$ul(
                   tags$li(strong("Primary Expenses:"), "Tuition, fees, housing, meals, and books"),
                   tags$li(strong("Secondary Expenses:"), "Transportation and personal expenses"),
-                  tags$li(strong("Primary Investment Vehicle:"), "Typically a more conservative investment approach for essential expenses"),
-                  tags$li(strong("Secondary Investment Vehicle:"), "Often allows for more aggressive growth strategy for discretionary expenses")
+                  tags$li(strong("Primary Fund:"), "Typically a more conservative investment approach for essential expenses"),
+                  tags$li(strong("Secondary Fund:"), "Often allows for more aggressive growth strategy for discretionary expenses")
                 ),
                 p("Instructions:"),
                 tags$ol(
@@ -225,42 +225,89 @@ ui <- dashboardPage(
 
 # Server logic 
 server <- function(input, output, session) {
-  # Define the cost types globally to ensure consistency
-  cost_types <- c("tuition", "fees", "housing", "meals", "books", "transport", "personal")
+  
+  if (FALSE) {
+    
+    # For troubleshooting
+    input <- list(
+      years_of_college = 4, 
+      age_initial = 0, 
+      age_college_start = 18, 
+      year_initial = 2025, 
+      pctpoint_inflation = 4, 
+      pctpoint_principal = 4, 
+      pctpoint_primary = 7, 
+      pctpoint_secondary = 10
+    )
+    
+    # For troubleshooting
+    costs_df <- function(costs_entered = NULL) {
+      if (!is.null(costs_entered)) {
+        current_costs
+      } else {
+        tibble::tibble(
+          year = c(2025, 2026),
+          age = c(0, 1),
+          cost_tuition = c(10086, 10490),
+          cost_fees = c(1772, 1842),
+          cost_housing = c(9562, 9944),
+          cost_meals = c(6396, 6651),
+          cost_books = c(1250, 1300),
+          cost_transport = c(1514, 1574),
+          cost_personal = c(1200, 1248)
+        )
+      }
+    } 
+    
+  }
+  
+  # Create a lookup table to match cost_values to cost_labels
+  # Define the cost_values and cost_labels globally to ensure consistency
+  category_lookup <- c(
+    "Tuition" = "cost_tuition", 
+    "Fees" = "cost_fees", 
+    "Housing" = "cost_housing", 
+    "Meals" = "cost_meals", 
+    "Books" = "cost_books", 
+    "Transportation" = "cost_transport", 
+    "Personal" = "cost_personal"
+  )
+  
+  cost_labels <- names(category_lookup)
+  cost_values <- unname(category_lookup)
   
   # Initial costs data frame
-  costs_df <- reactiveVal(data.frame(
+  costs_df <- reactiveVal(tibble::tibble(
     year = c(2025, 2026),
     age = c(0, 1),
-    tuition = c(10086, 10490),
-    fees = c(1772, 1842),
-    housing = c(9562, 9944),
-    meals = c(6396, 6651),
-    books = c(1250, 1300),
-    transport = c(1514, 1574),
-    personal = c(1200, 1248),
-    stringsAsFactors = FALSE
+    cost_tuition = c(10086, 10490),
+    cost_fees = c(1772, 1842),
+    cost_housing = c(9562, 9944),
+    cost_meals = c(6396, 6651),
+    cost_books = c(1250, 1300),
+    cost_transport = c(1514, 1574),
+    cost_personal = c(1200, 1248)
   ))
   
   # Update year and age in costs table when parameters change
   observe({
-    req(input$year_at_start_of_investing)
-    req(input$age_at_start_of_investing)
+    req(input$year_initial)
+    req(input$age_initial)
     
-    current_costs <- costs_df()
-    years_needed <- nrow(current_costs)
+    costs_entered <- costs_df()
+    years_needed <- nrow(costs_entered)
     
     # Update years and ages
-    start_year <- input$year_at_start_of_investing
-    start_age <- input$age_at_start_of_investing
+    start_year <- input$year_initial
+    start_age <- input$age_initial
     
     new_years <- seq(from = start_year, length.out = years_needed)
     new_ages <- seq(from = start_age, length.out = years_needed)
     
-    current_costs$year <- new_years
-    current_costs$age <- new_ages
+    costs_entered$year <- new_years
+    costs_entered$age <- new_ages
     
-    costs_df(current_costs)
+    costs_df(costs_entered)
   })
   
   # Display costs table
@@ -279,628 +326,690 @@ server <- function(input, output, session) {
   # Update costs data frame when cells are edited
   observeEvent(input$costs_table_cell_edit, {
     info <- input$costs_table_cell_edit
-    current_costs <- costs_df()
-    current_costs[info$row, info$col] <- info$value
-    costs_df(current_costs)
+    costs_entered <- costs_df()
+    costs_entered[info$row, info$col] <- info$value
+    costs_df(costs_entered)
   })
   
   # Add a new year to the costs table
   observeEvent(input$add_year, {
-    current_costs <- costs_df()
-    last_row <- nrow(current_costs)
-    new_row <- current_costs[last_row, ]
+    costs_entered <- costs_df()
+    last_row <- nrow(costs_entered)
+    new_row <- costs_entered[last_row, ]
     
     # Increment year and age
     new_row$year <- new_row$year + 1
     new_row$age <- new_row$age + 1
     
     # Apply inflation to costs
-    inflation_factor <- 1 + (input$inflation_of_higher_education_expected_annual / 100)
-    for(col in cost_types) {
+    inflation_factor <- 1 + (input$pctpoint_inflation / 100)
+    for(col in cost_values) {
       new_row[[col]] <- new_row[[col]] * inflation_factor
     }
     
-    costs_df(rbind(current_costs, new_row))
+    costs_df(rbind(costs_entered, new_row))
   })
   
   # Calculate results when the button is clicked
   results <- eventReactive(input$calculate, {
+    
+    # Define cost types
+    cost_type_primary <- c("cost_tuition", "cost_fees", "cost_housing", "cost_meals", "cost_books")
+    cost_type_secondary <- c("cost_transport", "cost_personal")
+    
     # Get inputs
     years_of_college <- input$years_of_college
-    age_at_start_of_investing <- input$age_at_start_of_investing
-    age_at_start_of_first_year_of_higher_education <- input$age_at_start_of_first_year_of_higher_education
-    year_at_start_of_investing <- input$year_at_start_of_investing
-    inflation_of_higher_education_expected_annual <- input$inflation_of_higher_education_expected_annual / 100
-    multiplier_to_increase_annual_allocation <- input$multiplier_to_increase_annual_allocation / 100
-    growth_of_primary_investment_vehicle_expected_annual <- input$growth_of_primary_investment_vehicle_expected_annual / 100
-    growth_of_secondary_investment_vehicle_expected_annual <- input$growth_of_secondary_investment_vehicle_expected_annual / 100
+    age_initial <- input$age_initial
+    age_college_start <- input$age_college_start
+    year_initial <- input$year_initial
+    percent_inflation <- input$pctpoint_inflation / 100
+    percent_principal <- input$pctpoint_principal / 100
+    percent_primary <- input$pctpoint_primary / 100
+    percent_secondary <- input$pctpoint_secondary / 100
     
     # Extract costs from the table
-    current_costs <- costs_df()
+    costs_entered <- costs_df()
     
     # Create named lists for each cost type
-    costs_actual <- list()
+    costs_actual <- costs_entered
     
-    for(cost_type in cost_types) {
-      costs_actual[[cost_type]] <- setNames(current_costs[[cost_type]], current_costs$year)
-    }
+    # Calculate age and year values
+    age_at_end_of_higher_education <- age_college_start + years_of_college - 1
+    year_at_end_of_higher_education <- year_initial + (age_at_end_of_higher_education - age_initial)
     
     # Calculate age and year sequences
-    age_at_start_of_last_year_of_higher_education <- age_at_start_of_first_year_of_higher_education + years_of_college - 1
-    age <- seq(from = age_at_start_of_investing, to = age_at_start_of_last_year_of_higher_education)
-    year_at_start_of_higher_education <- year_at_start_of_investing + (age_at_start_of_first_year_of_higher_education - age_at_start_of_investing)
-    year_at_end_of_higher_education <- year_at_start_of_investing + (age_at_start_of_last_year_of_higher_education - age_at_start_of_investing)
-    year <- seq(from = year_at_start_of_investing, to = year_at_end_of_higher_education)
-    years_during_college <- year[(length(year) - years_of_college + 1):length(year)]
+    ages_eligible <- seq(from = age_initial, to = age_at_end_of_higher_education)
+    years_eligible <- seq(from = year_initial, to = year_at_end_of_higher_education)
+    years_during_college <- years_eligible[(length(years_eligible) - years_of_college + 1):length(years_eligible)]
+    college_start_year <- min(years_during_college)
+    college_end_year <- max(years_during_college)
     
-    # Get the latest actual costs for each type
-    cost_actual_latest <- list()
-    for(cost_type in cost_types) {
-      cost_actual_latest[[cost_type]] <- unname(costs_actual[[cost_type]][length(costs_actual[[cost_type]])])
-    }
+    years_to_invest <- length(years_eligible) - years_of_college
+    total_years_investing <- years_to_invest + 1
     
-    # Estimate costs for remaining years
-    costs_est_to_complete <- list()
-    for(cost_type in cost_types) {
-      years_to_estimate <- setdiff(as.character(year), names(costs_actual[[cost_type]]))
-      if(length(years_to_estimate) > 0) {
-        num_years_to_estimate <- length(years_to_estimate)
-        inflation_factors <- cumprod(rep((1 + inflation_of_higher_education_expected_annual), num_years_to_estimate))
-        costs_est_to_complete[[cost_type]] <- setNames(
-          inflation_factors * cost_actual_latest[[cost_type]],
-          years_to_estimate
-        )
-      } else {
-        costs_est_to_complete[[cost_type]] <- numeric(0)
-      }
-    }
-    
-    # Combine actual and estimated costs
-    costs_est_at_completion <- list()
-    for(cost_type in cost_types) {
-      costs_est_at_completion[[cost_type]] <- c(costs_actual[[cost_type]], costs_est_to_complete[[cost_type]])
-    }
-    
-    # Extract costs for college years
-    costs_college <- list()
-    for(cost_type in cost_types) {
-      costs_college[[cost_type]] <- costs_est_at_completion[[cost_type]][as.character(years_during_college)]
-    }
-    
-    # Calculate total costs for each category
-    cost_college <- list()
-    for(cost_type in cost_types) {
-      cost_college[[cost_type]] <- sum(costs_college[[cost_type]])
-    }
-    
-    # Calculate primary and secondary costs
-    cost_college_primary <- cost_college$tuition + cost_college$fees + 
-      cost_college$housing + cost_college$meals + cost_college$books
-    
-    cost_college_secondary <- cost_college$transport + cost_college$personal
-    
-    cost_covered_by_investment_vehicle_primary <- cost_college_primary
-    cost_covered_by_investment_vehicle_secondary <- cost_college_secondary
-    cost_covered_by_investment_vehicle_total <- cost_covered_by_investment_vehicle_primary + 
-      cost_covered_by_investment_vehicle_secondary
-    
-    # Calculate required initial investment for primary expenses
-    allocation_into_primary_vehicle_in_initial_year <- 1
-    primary_vehicle_value_total <- 0
-    
-    while ((cost_covered_by_investment_vehicle_primary - primary_vehicle_value_total) > 0) {
-      years_to_invest <- length(year) - years_of_college
-      multipliers_for_primary_vehicle <- c(1, cumprod(rep((1 + multiplier_to_increase_annual_allocation), years_to_invest)))
-      allocations_into_primary_vehicle_each_year <- allocation_into_primary_vehicle_in_initial_year * multipliers_for_primary_vehicle
-      
-      years_of_growth <- rev(seq_len(years_to_invest + 1))
-      allocations_growth_for_each_year <- (1 + growth_of_primary_investment_vehicle_expected_annual) ^ years_of_growth
-      
-      primary_vehicle_value_each_year <- allocations_into_primary_vehicle_each_year * allocations_growth_for_each_year
-      primary_vehicle_value_total <- sum(primary_vehicle_value_each_year)
-      
-      if (!(cost_covered_by_investment_vehicle_primary - primary_vehicle_value_total) > 0) {
-        break
-      }
-      
-      allocation_into_primary_vehicle_in_initial_year <- allocation_into_primary_vehicle_in_initial_year + 1
-    }
-    
-    # Calculate required initial investment for secondary expenses
-    allocation_into_secondary_vehicle_in_initial_year <- 1
-    secondary_vehicle_value_total <- 0
-    
-    while ((cost_covered_by_investment_vehicle_secondary - secondary_vehicle_value_total) > 0) {
-      years_to_invest <- length(year) - years_of_college
-      multipliers_for_secondary_vehicle <- c(1, cumprod(rep((1 + multiplier_to_increase_annual_allocation), years_to_invest)))
-      allocations_into_secondary_vehicle_each_year <- allocation_into_secondary_vehicle_in_initial_year * multipliers_for_secondary_vehicle
-      
-      years_of_growth <- rev(seq_len(years_to_invest + 1))
-      allocations_growth_for_each_year <- (1 + growth_of_secondary_investment_vehicle_expected_annual) ^ years_of_growth
-      
-      secondary_vehicle_value_each_year <- allocations_into_secondary_vehicle_each_year * allocations_growth_for_each_year
-      secondary_vehicle_value_total <- sum(secondary_vehicle_value_each_year)
-      
-      if (!(cost_covered_by_investment_vehicle_secondary - secondary_vehicle_value_total) > 0) {
-        break
-      }
-      
-      allocation_into_secondary_vehicle_in_initial_year <- allocation_into_secondary_vehicle_in_initial_year + 1
-    }
-    
-    # Prepare data for detailed tables and charts
-    years_to_invest <- length(year) - years_of_college
-    years_for_plot <- year[1:(years_to_invest + 1)]
-    
-    # Primary vehicle growth data
-    primary_contributions <- allocation_into_primary_vehicle_in_initial_year * 
-      c(1, cumprod(rep((1 + multiplier_to_increase_annual_allocation), years_to_invest)))
-    names(primary_contributions) <- years_for_plot
-    
-    # Secondary vehicle growth data
-    secondary_contributions <- allocation_into_secondary_vehicle_in_initial_year * 
-      c(1, cumprod(rep((1 + multiplier_to_increase_annual_allocation), years_to_invest)))
-    names(secondary_contributions) <- years_for_plot
-    
-    # Create investment projection data
-    investment_projection <- data.frame(
-      year = years_for_plot,
-      age = age[1:(years_to_invest + 1)],
-      primary_allocation = primary_contributions,
-      secondary_allocation = secondary_contributions,
-      total_annual_investment = primary_contributions + secondary_contributions
-    )
-    
-    # Create investment growth table
-    investment_growth <- data.frame(
-      year = years_for_plot,
-      age = age[1:(years_to_invest + 1)],
-      primary_investment = 0,
-      secondary_investment = 0,
-      total_investment = 0,
-      annual_contribution = primary_contributions + secondary_contributions
-    )
-    
-    # Calculate cumulative investment growth
-    primary_running_total <- 0
-    secondary_running_total <- 0
-    
-    for(i in 1:nrow(investment_growth)) {
-      # Calculate growth and add new contribution
-      primary_running_total <- primary_running_total * (1 + growth_of_primary_investment_vehicle_expected_annual) + primary_contributions[i]
-      secondary_running_total <- secondary_running_total * (1 + growth_of_secondary_investment_vehicle_expected_annual) + secondary_contributions[i]
-      
-      # Update the table
-      investment_growth$primary_investment[i] <- primary_running_total
-      investment_growth$secondary_investment[i] <- secondary_running_total
-      investment_growth$total_investment[i] <- primary_running_total + secondary_running_total
-    }
-    
-    # Create in_college flag for the cost projection table
-    all_years_df <- data.frame(
-      year = year,
-      age = age,
-      in_college = year %in% years_during_college
-    )
-    
-    # Create complete costs table
-    costs_table <- data.frame(
-      year = integer(length(year)),
-      age = integer(length(year))
-    )
-    
-    for(i in 1:length(year)) {
-      costs_table$year[i] <- year[i]
-      costs_table$age[i] <- age[i]
-    }
-    
-    for(cost_type in cost_types) {
-      costs_table[[cost_type]] <- unname(costs_est_at_completion[[cost_type]])
-    }
-    
-    # Add total and in_college columns
-    costs_table$total <- rowSums(costs_table[, cost_types])
-    costs_table$in_college <- costs_table$year %in% years_during_college
-    
-    # Create college years cost table
-    college_costs_table <- costs_table[costs_table$in_college, ]
-    
-    # Calculate total costs and final investment value
-    total_college_cost <- sum(college_costs_table$total)
-    final_investment_value <- tail(investment_growth$total_investment, 1)
-    projected_surplus <- final_investment_value - total_college_cost
-    
-    # Create primary vs secondary for plotting
-    primary_secondary <- data.frame(
-      category = c("Primary Expenses", "Secondary Expenses"),
-      value = c(cost_college_primary, cost_college_secondary)
-    )
-    
-    # Create cost breakdown for plotting 
-    cost_breakdown <- data.frame(
-      category = c("Tuition", "Fees", "Housing", "Meals", "Books", "Transportation", "Personal"),
-      cost_type = cost_types, # Added this to make the mapping explicit
-      value = c(
-        cost_college$tuition,
-        cost_college$fees,
-        cost_college$housing,
-        cost_college$meals,
-        cost_college$books,
-        cost_college$transport,
-        cost_college$personal
+    # Working data frame
+    working_00 <- tibble::tibble(
+      year = years_eligible, 
+      age = ages_eligible
+    ) %>% 
+      dplyr::mutate(
+        years_of_college = years_of_college,
+        age_initial = age_initial,
+        age_college_start = age_college_start,
+        year_initial = year_initial,
+        age_at_end_of_higher_education = age_at_end_of_higher_education,
+        year_at_end_of_higher_education = year_at_end_of_higher_education,
+        college_start_year = college_start_year,
+        college_end_year = college_end_year,
+        total_years_investing = total_years_investing
       )
-    )
     
-    # Create data for yearly cost breakdown chart - using cost_types directly
-    yearly_costs_long <- reshape2::melt(
-      college_costs_table[, c("year", cost_types)], 
-      id.vars = "year", 
-      variable.name = "category", 
-      value.name = "cost"
-    )
+    working_01 <- working_00 %>% 
+      # Indicate if in in_college during eligible range of years/ages
+      dplyr::mutate(in_college = years_eligible %in% years_during_college) %>% 
+      # Join costs_actual
+      dplyr::left_join(costs_actual) %>% 
+      dplyr::mutate(cost_primary = rowSums(select({.}, tidyselect::all_of(cost_type_primary)))) %>% 
+      dplyr::mutate(cost_secondary = rowSums(select({.}, tidyselect::all_of(cost_type_secondary)))) %>% 
+      dplyr::mutate(cost_total = cost_primary + cost_secondary) %>% 
+      # Add constants
+      dplyr::mutate(percent_inflation = percent_inflation) %>% 
+      dplyr::mutate(percent_principal = percent_principal) %>% 
+      dplyr::mutate(percent_primary = percent_primary) %>% 
+      dplyr::mutate(percent_secondary = percent_secondary) %>% 
+      # Add and update multipliers 
+      dplyr::mutate(multiplier_inflation = 1 + percent_inflation) %>% 
+      dplyr::mutate(multiplier_principal = 1 + percent_principal) %>% 
+      dplyr::mutate(multiplier_primary = 1 + percent_primary) %>% 
+      dplyr::mutate(multiplier_secondary = 1 + percent_secondary) %>% 
+      # Update with is.na
+      dplyr::mutate(multiplier_inflation = ifelse(!is.na(cost_tuition), 1, multiplier_inflation)) %>% 
+      # Update with row_number
+      dplyr::mutate(multiplier_primary = ifelse(dplyr::row_number() == 1, 1, multiplier_primary)) %>% 
+      dplyr::mutate(multiplier_principal = ifelse(dplyr::row_number() == 1, 1, multiplier_principal)) %>% 
+      dplyr::mutate(multiplier_secondary = ifelse(dplyr::row_number() == 1, 1, multiplier_secondary)) %>% 
+      # Calculate cumprod to facilitate calculation of inflated values
+      dplyr::mutate(cumprod_inflation = round(cumprod(multiplier_inflation), 6)) %>% 
+      dplyr::mutate(cumprod_principal = round(cumprod(multiplier_principal), 6)) %>% 
+      dplyr::mutate(cumprod_primary = round(cumprod(multiplier_primary), 6)) %>%
+      dplyr::mutate(cumprod_secondary = round(cumprod(multiplier_secondary), 6)) %>%
+      # Fill (down) columns that start with "cost_" and then calculate remaining inflated values
+      tidyr::fill(tidyselect::starts_with("cost_"), .direction = "down") %>% 
+      dplyr::mutate(dplyr::across(tidyselect::starts_with("cost_"), ~ cumprod_inflation * .x)) %>% 
+      # Calculate cumprod_growth
+      dplyr::mutate(revprod_growth_primary = multiplier_primary ^ pmax(rev(dplyr::row_number()) - years_of_college, 0)) %>% 
+      dplyr::mutate(revprod_growth_secondary = multiplier_secondary ^ pmax(rev(dplyr::row_number()) - years_of_college, 0))
     
-    # Create a lookup table to match cost_types to display names
-    category_lookup <- setNames(
-      c("Tuition", "Fees", "Housing", "Meals", "Books", "Transportation", "Personal"),
-      cost_types
-    )
+    costs_college_each <- working_01 %>% 
+      dplyr::filter(year %in% years_during_college) %>% 
+      dplyr::select(tidyselect::all_of(cost_values)) %>% 
+      colSums()
     
-    # Add display names to the yearly costs data
-    yearly_costs_long$display_category <- category_lookup[as.character(yearly_costs_long$category)]
+    # Calculate primary, secondary, total costs
+    cost_college_primary <- working_01 %>% 
+      dplyr::filter(year %in% years_during_college) %>% 
+      dplyr::pull(cost_primary) %>% 
+      sum()
     
-    # Create data for yearly investment chart
-    investment_long <- reshape2::melt(
-      investment_projection[, c("year", "primary_allocation", "secondary_allocation")],
-      id.vars = "year",
-      variable.name = "vehicle",
-      value.name = "amount"
-    )
-    investment_long$vehicle <- factor(investment_long$vehicle, 
-                                      labels = c("Primary", "Secondary"))
+    cost_college_secondary <- working_01 %>% 
+      dplyr::filter(year %in% years_during_college) %>% 
+      dplyr::pull(cost_secondary) %>% 
+      sum()
     
-    # Return all results
+    # Rename to clarify
+    cost_college_total <- working_01 %>% 
+      dplyr::filter(year %in% years_during_college) %>% 
+      dplyr::pull(cost_total) %>% 
+      sum()
+    
+    # Create a function that calculate investment growth
+    calculate_growth <- function(
+    df, 
+    col_cumprod,
+    initial_principal, 
+    col_principal, 
+    col_age, 
+    col_age_college_start, 
+    col_cost,
+    col_growth_percent, 
+    col_growth_amount, 
+    col_balance_current
+    ) {
+      
+      # One value in col
+      age_college_start <- df[[col_age_college_start]]
+      
+      # Many values in col
+      cumprod <- df[[col_cumprod]]
+      age <- df[[col_age]]
+      cost <- df[[col_cost]]
+      
+      growth_percent <- df[[col_growth_percent]]
+      principal_amount <- ifelse(age < age_college_start, initial_principal * cumprod, 0)
+      df[[col_principal]] <- principal_amount
+      
+      # Initialize vectors for calculated values
+      growth_amount <- c(NULL)
+      balance_current <- c(NULL)
+      
+      i <- NULL
+      # Calculate fund growth and balance
+      for (i in seq_len(nrow(df))) {
+        
+        contribution_current <- if (age[i] < age_college_start[i]) { principal_amount[i] } else { (-cost[i]) }
+        # Get previous balance (0 for first year)
+        balance_previous <- if (i > 1) { balance_current[i-1] } else { 0 }
+        # Calculate fund growth based on formula
+        growth_amount[i] <- (contribution_current + balance_previous) * growth_percent[i]
+        # Update balance
+        balance_current[i] <- balance_previous + contribution_current + growth_amount[i]
+        
+      }
+      
+      df[[col_growth_amount]] <- growth_amount
+      df[[col_balance_current]] <- balance_current
+      return(df)
+    }
+    
+    if (FALSE) {
+      col_cumprod = "cumprod_principal"
+      initial_principal = initial_principal_primary
+      col_principal = "principal_primary"
+      col_age = "age"
+      col_age_college_start = "age_college_start"
+      col_cost = "cost_primary"
+      col_growth_percent = "percent_primary"
+      col_growth_amount = "growth_primary"
+      col_balance_current = "balance_primary"
+    }
+    
+    {
+      
+      # Calculate required initial investment for expenses
+      initial_principal_primary <- 1
+      fund_value_total <- 0
+      df_loop <- working_01
+      
+      while ((cost_college_primary - fund_value_total) > 0) {
+        df_loop <- calculate_growth(
+          df = df_loop, 
+          col_cumprod = "cumprod_principal",
+          initial_principal = initial_principal_primary, 
+          col_principal = "principal_primary", 
+          col_age = "age", 
+          col_age_college_start = "age_college_start", 
+          col_cost = "cost_primary",
+          col_growth_percent = "percent_primary",
+          col_growth_amount = "growth_primary",
+          col_balance_current = "balance_primary"
+        )
+        
+        fund_value_total <- max(df_loop[["balance_primary"]])
+        
+        if (!(cost_college_total - fund_value_total) > 0) {
+          break
+        }
+        
+        initial_principal_primary <- initial_principal_primary + 1
+      }
+      
+      print(initial_principal_primary)
+      
+    }
+    
+    {
+      
+      # Calculate required initial investment for expenses
+      initial_principal_secondary <- 1
+      fund_value_total <- 0
+      df_loop <- working_01
+      
+      while ((cost_college_secondary - fund_value_total) > 0) {
+        df_loop <- calculate_growth(
+          df = df_loop, 
+          col_cumprod = "cumprod_principal",
+          initial_principal = initial_principal_secondary, 
+          col_principal = "principal_secondary", 
+          col_age = "age", 
+          col_age_college_start = "age_college_start", 
+          col_cost = "cost_secondary",
+          col_growth_percent = "percent_secondary",
+          col_growth_amount = "growth_secondary",
+          col_balance_current = "balance_secondary"
+        )
+        
+        fund_value_total <- max(df_loop[["balance_secondary"]])
+        
+        if (!(cost_college_total - fund_value_total) > 0) {
+          break
+        }
+        
+        initial_principal_secondary <- initial_principal_secondary + 1
+      }
+      
+      print(initial_principal_secondary)
+      
+    }
+    
+    working_02 <- working_01 %>% 
+      calculate_growth(
+        col_cumprod = "cumprod_principal",
+        initial_principal = initial_principal_primary, 
+        col_principal = "principal_primary", 
+        col_age = "age", 
+        col_age_college_start = "age_college_start", 
+        col_cost = "cost_primary",
+        col_growth_percent = "percent_primary",
+        col_growth_amount = "growth_primary",
+        col_balance_current = "balance_primary"
+      ) %>% 
+      calculate_growth(
+        col_cumprod = "cumprod_principal",
+        initial_principal = initial_principal_secondary, 
+        col_principal = "principal_secondary", 
+        col_age = "age", 
+        col_age_college_start = "age_college_start", 
+        col_cost = "cost_secondary",
+        col_growth_percent = "percent_secondary",
+        col_growth_amount = "growth_secondary",
+        col_balance_current = "balance_secondary"
+      ) %>% 
+      dplyr::mutate(principal_total = principal_primary + principal_secondary) %>% 
+      dplyr::mutate(growth_total = growth_primary + growth_secondary) %>% 
+      dplyr::mutate(balance_total = balance_primary + balance_secondary) 
+    
+    working_final <- working_02
+    
+    # Return a list of all calculated values - make sure this is COMPLETE
     return(list(
-      investment_primary = allocation_into_primary_vehicle_in_initial_year,
-      investment_secondary = allocation_into_secondary_vehicle_in_initial_year,
-      total_cost = cost_covered_by_investment_vehicle_total,
-      primary_cost = cost_college_primary,
-      secondary_cost = cost_college_secondary,
-      cost_breakdown = cost_breakdown,
-      primary_secondary = primary_secondary,
-      investment_growth = investment_growth,
-      investment_projection = investment_projection,
-      costs_table = costs_table,
-      college_costs_table = college_costs_table,
-      yearly_costs_long = yearly_costs_long,
-      investment_long = investment_long,
-      years_for_plot = years_for_plot,
-      college_years = years_during_college,
-      total_years_investing = years_to_invest + 1,
-      college_start_year = min(years_during_college),
-      college_end_year = max(years_during_college),
-      total_college_cost = total_college_cost,
-      final_investment_value = final_investment_value,
-      projected_surplus = projected_surplus,
-      surplus_percentage = (projected_surplus / total_college_cost) * 100,
-      cost_types = cost_types,
-      category_lookup = category_lookup
+      working_final = working_final,
+      cost_college_total = cost_college_total,
+      cost_college_primary = cost_college_primary,
+      cost_college_secondary = cost_college_secondary,
+      initial_principal_primary = initial_principal_primary,
+      initial_principal_secondary = initial_principal_secondary,
+      college_start_year = college_start_year,
+      college_end_year = college_end_year,
+      years_eligible = years_eligible,
+      years_during_college = years_during_college,
+      costs_college_each = costs_college_each
     ))
+    
+    if (FALSE) {
+      results <- function() {
+        list(
+          working_final = working_final,
+          cost_college_total = cost_college_total,
+          cost_college_primary = cost_college_primary,
+          cost_college_secondary = cost_college_secondary,
+          initial_principal_primary = initial_principal_primary,
+          initial_principal_secondary = initial_principal_secondary,
+          college_start_year = college_start_year,
+          college_end_year = college_end_year,
+          years_eligible = years_eligible,
+          years_during_college = years_during_college,
+          costs_college_each = costs_college_each
+        )
+      }
+      r <- results
+    }
+    
   })
   
-  # Display value boxes
+  # Value box outputs
   output$total_cost_box <- renderValueBox({
     req(results())
-    r <- results()
     valueBox(
-      paste0("$", format(round(r$total_cost), big.mark=",")), 
-      "Total College Cost",
+      value = dollar(results()$cost_college_total),
+      subtitle = "Total College Costs",
       icon = icon("university"),
-      color = "blue"
+      color = "red"
     )
   })
   
-  output$primary_allocation_box <- renderValueBox({
+  output$primary_principal_box <- renderValueBox({
     req(results())
-    r <- results()
     valueBox(
-      paste0("$", format(round(r$investment_primary), big.mark=",")), 
-      "Initial Primary Allocation",
+      value = dollar(results()$initial_principal_primary),
+      subtitle = "Initial Primary Investment",
       icon = icon("dollar-sign"),
       color = "green"
     )
   })
   
-  output$secondary_allocation_box <- renderValueBox({
+  output$secondary_principal_box <- renderValueBox({
     req(results())
-    r <- results()
     valueBox(
-      paste0("$", format(round(r$investment_secondary), big.mark=",")), 
-      "Initial Secondary Allocation",
-      icon = icon("coins"),
-      color = "purple"
+      value = dollar(results()$initial_principal_secondary),
+      subtitle = "Initial Secondary Investment",
+      icon = icon("dollar-sign"),
+      color = "yellow"
     )
   })
   
-  # Display summary text
+  # Summary text output
   output$summary_text <- renderText({
     req(results())
-    r <- results()
     
     paste0(
-      "Total Years of Investing: ", r$total_years_investing, "\n",
-      "College Start Year: ", r$college_start_year, " (Age ", input$age_at_start_of_first_year_of_higher_education, ")\n",
-      "College End Year: ", r$college_end_year, "\n\n",
-      "Total College Cost: $", format(round(r$total_college_cost), big.mark = ","), "\n",
-      "Final Investment Value: $", format(round(r$final_investment_value, 1), big.mark = ","), "\n\n",
-      "Projected Surplus: $", format(round(r$projected_surplus, 2), big.mark = ","), 
-      " (", round(r$surplus_percentage, 1), "% more than needed)"
+      "College Years: ", results()$college_start_year, " - ", results()$college_end_year, "\n\n",
+      "Total College Cost: ", dollar(results()$cost_college_total), "\n",
+      "  - Primary Expenses: ", dollar(results()$cost_college_primary), "\n",
+      "  - Secondary Expenses: ", dollar(results()$cost_college_secondary), "\n\n",
+      "Required Investment:\n",
+      "  - Primary Fund: ", dollar(results()$initial_principal_primary), "\n",
+      "  - Secondary Fund: ", dollar(results()$initial_principal_secondary), "\n",
+      "  - Total Initial: ", dollar(results()$initial_principal_primary + results()$initial_principal_secondary)
     )
   })
   
-  # Display investment growth plot
+  # Investment growth plot
   output$investment_growth_plot <- renderPlot({
     req(results())
-    r <- results()
     
-    # Prepare data for plotting
-    growth_data <- r$investment_growth
+    investment_data <- results()$working_final %>%
+      filter(!in_college) %>%
+      select(year, principal_total, growth_total, balance_total)
     
-    # Add a total line
-    plot_data <- data.frame(
-      year = rep(growth_data$year, 3),
-      value = c(growth_data$primary_investment, growth_data$secondary_investment, growth_data$total_investment),
-      type = factor(rep(c("Primary Investment", "Secondary Investment", "Total"), each = nrow(growth_data)),
-                    levels = c("Primary Investment", "Secondary Investment", "Total"))
-    )
+    investment_data_long <- melt(investment_data, id.vars = "year", 
+                                 measure.vars = c("principal_total", "growth_total"))
     
-    # Create vertical line for college start
-    college_start <- min(r$college_years)
-    
-    ggplot(plot_data, aes(x = year, y = value, color = type, group = type)) +
-      geom_line(size = 1.2) +
-      theme_minimal() +
-      labs(title = "Investment Growth Over Time", 
-           x = "Year", 
-           y = "Amount ($)", 
-           color = "Investment Type") +
+    ggplot(investment_data_long, aes(x = year, y = value, fill = variable)) +
+      geom_bar(stat = "identity") +
+      scale_fill_manual(values = c("principal_total" = "#3498db", "growth_total" = "#2ecc71"),
+                        labels = c("Principal", "Growth")) +
+      labs(x = "Year", y = "Amount ($)", fill = "Type") +
       scale_y_continuous(labels = dollar_format()) +
-      scale_color_manual(values = c("Primary Investment" = "blue", 
-                                    "Secondary Investment" = "green", 
-                                    "Total" = "purple")) +
-      geom_vline(xintercept = college_start, linetype = "dashed", color = "darkred") +
-      annotate("text", x = college_start, y = max(plot_data$value) * 0.9, 
-               label = "College Starts", hjust = -0.1, color = "darkred") +
-      theme(legend.position = "right", legend.title = element_text(size = 10))
+      theme_minimal() +
+      theme(legend.position = "bottom")
   })
   
-  # Display cost breakdown plot
+  # Cost breakdown plot
   output$cost_breakdown_plot <- renderPlot({
     req(results())
-    r <- results()
     
-    # Extract college years costs and prepare data directly
-    college_data <- r$college_costs_table[, c("year", r$cost_types)]
+    cost_data <- results()$working_final %>%
+      filter(in_college) %>%
+      select(year, cost_tuition, cost_fees, cost_housing, cost_meals, 
+             cost_books, cost_transport, cost_personal)
     
-    # Prepare the data for plotting
-    plot_data <- reshape2::melt(college_data, id.vars = "year", variable.name = "category", value.name = "cost")
+    cost_data_long <- melt(cost_data, id.vars = "year", 
+                           measure.vars = c("cost_tuition", "cost_fees", "cost_housing", 
+                                            "cost_meals", "cost_books", "cost_transport", "cost_personal"))
     
-    # Add display names using the lookup table
-    plot_data$display_category <- r$category_lookup[as.character(plot_data$category)]
+    # Map variable names to readable labels
+    cost_data_long$variable <- factor(cost_data_long$variable,
+                                      levels = c("cost_tuition", "cost_fees", "cost_housing", 
+                                                 "cost_meals", "cost_books", "cost_transport", "cost_personal"),
+                                      labels = c("Tuition", "Fees", "Housing", 
+                                                 "Meals", "Books", "Transportation", "Personal"))
     
-    # Create stacked bar chart
-    ggplot(plot_data, aes(x = factor(year), y = cost, fill = display_category)) +
+    ggplot(cost_data_long, aes(x = year, y = value, fill = variable)) +
       geom_bar(stat = "identity") +
-      theme_minimal() +
-      labs(title = "College Costs by Year and Category", 
-           x = "Year", 
-           y = "Cost ($)", 
-           fill = "Expense Category") +
-      scale_y_continuous(labels = dollar_format()) +
       scale_fill_brewer(palette = "Set3") +
-      theme(axis.text.x = element_text(angle = 0, hjust = 0.5),
-            legend.position = "right")
+      labs(x = "Year", y = "Amount ($)", fill = "Category") +
+      scale_y_continuous(labels = dollar_format()) +
+      theme_minimal() +
+      theme(legend.position = "bottom")
   })
   
-  # Display yearly cost breakdown chart
+  # Yearly cost breakdown
   output$yearly_cost_breakdown <- renderPlot({
     req(results())
-    r <- results()
     
-    ggplot(r$yearly_costs_long, aes(x = factor(year), y = cost, fill = display_category)) +
-      geom_bar(stat = "identity") +
-      theme_minimal() +
-      labs(title = "Projected College Costs by Year and Category", 
-           x = "Year", 
-           y = "Cost ($)", 
-           fill = "Category") +
+    cost_data <- results()$working_final %>%
+      filter(in_college) %>%
+      select(year, cost_tuition, cost_fees, cost_housing, cost_meals, 
+             cost_books, cost_transport, cost_personal)
+    
+    # Calculate primary and secondary costs per year
+    cost_data <- cost_data %>%
+      mutate(
+        primary_costs = cost_tuition + cost_fees + cost_housing + cost_meals + cost_books,
+        secondary_costs = cost_transport + cost_personal
+      ) %>%
+      select(year, primary_costs, secondary_costs)
+    
+    cost_data_long <- melt(cost_data, id.vars = "year", 
+                           measure.vars = c("primary_costs", "secondary_costs"))
+    
+    cost_data_long$variable <- factor(cost_data_long$variable,
+                                      levels = c("primary_costs", "secondary_costs"),
+                                      labels = c("Primary Costs", "Secondary Costs"))
+    
+    ggplot(cost_data_long, aes(x = year, y = value, fill = variable)) +
+      geom_bar(stat = "identity", position = "stack") +
+      scale_fill_manual(values = c("Primary Costs" = "#e74c3c", "Secondary Costs" = "#f39c12")) +
+      labs(x = "Year", y = "Amount ($)", fill = "Category") +
       scale_y_continuous(labels = dollar_format()) +
-      scale_fill_brewer(palette = "Set3") +
-      theme(axis.text.x = element_text(angle = 0))
+      theme_minimal() +
+      theme(legend.position = "bottom")
   })
   
-  # Display yearly contributions chart
+  # Yearly contributions plot
   output$yearly_contributions <- renderPlot({
     req(results())
-    r <- results()
     
-    ggplot(r$investment_long, aes(x = factor(year), y = amount, fill = vehicle)) +
-      geom_bar(stat = "identity") +
-      theme_minimal() +
-      labs(title = "Annual Investment Allocations", 
-           x = "Year", 
-           y = "Amount ($)", 
-           fill = "Vehicle") +
+    investment_data <- results()$working_final %>%
+      filter(!in_college) %>%
+      select(year, principal_primary, principal_secondary)
+    
+    investment_data_long <- melt(investment_data, id.vars = "year", 
+                                 measure.vars = c("principal_primary", "principal_secondary"))
+    
+    investment_data_long$variable <- factor(investment_data_long$variable,
+                                            levels = c("principal_primary", "principal_secondary"),
+                                            labels = c("Primary Fund", "Secondary Fund"))
+    
+    ggplot(investment_data_long, aes(x = year, y = value, fill = variable)) +
+      geom_bar(stat = "identity", position = "stack") +
+      scale_fill_manual(values = c("Primary Fund" = "#3498db", "Secondary Fund" = "#9b59b6")) +
+      labs(x = "Year", y = "Amount ($)", fill = "Fund") +
       scale_y_continuous(labels = dollar_format()) +
-      scale_fill_brewer(palette = "Set1") +
-      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+      theme_minimal() +
+      theme(legend.position = "bottom")
   })
   
-  # Display annual allocations chart
-  output$annual_allocations_chart <- renderPlot({
-    req(results())
-    r <- results()
-    
-    ggplot(r$investment_long, aes(x = factor(year), y = amount, fill = vehicle)) +
-      geom_bar(stat = "identity") +
-      theme_minimal() +
-      labs(title = "Annual Investment Allocations", 
-           x = "Year", 
-           y = "Amount ($)", 
-           fill = "Vehicle") +
-      scale_y_continuous(labels = dollar_format()) +
-      scale_fill_brewer(palette = "Set1") +
-      theme(axis.text.x = element_text(angle = 45, hjust = 1))
-  })
-  
-  # Display category breakdown chart
-  output$cost_category_breakdown <- renderPlot({
-    req(results())
-    r <- results()
-    
-    # Use the display names instead of cost types for plotting
-    plot_data <- data.frame(
-      category = r$cost_breakdown$category,
-      value = r$cost_breakdown$value
-    )
-    
-    ggplot(plot_data, aes(x = reorder(category, -value), y = value, fill = category)) +
-      geom_bar(stat = "identity") +
-      theme_minimal() +
-      labs(title = "Expense Categories - Total Cost for All College Years", 
-           x = "Category", 
-           y = "Total Cost ($)") +
-      scale_y_continuous(labels = dollar_format()) +
-      scale_fill_brewer(palette = "Set3") +
-      theme(legend.position = "none") +
-      geom_text(aes(label = paste0("$", format(round(value), big.mark = ","))), 
-                vjust = -0.5)
-  })
-  
-  # Display college costs table
+  # College costs table
   output$college_costs_table <- renderDT({
     req(results())
-    r <- results()
     
-    # Format the table for display
-    display_table <- r$college_costs_table[, c("year", r$cost_types)]
+    cost_data <- results()$working_final %>%
+      filter(in_college) %>%
+      select(year, age, cost_tuition, cost_fees, cost_housing, cost_meals, 
+             cost_books, cost_transport, cost_personal, cost_total)
     
-    # Format currency values
-    for(col in r$cost_types) {
-      display_table[[col]] <- paste0("$", format(round(display_table[[col]]), big.mark = ","))
-    }
+    # Rename columns for display
+    names(cost_data) <- c("Year", "Age", "Tuition", "Fees", "Housing", "Meals", 
+                          "Books", "Transportation", "Personal", "Total")
     
-    # Rename columns with display names
-    colnames(display_table)[-1] <- r$category_lookup[r$cost_types]
-    
-    datatable(
-      display_table,
-      options = list(
-        pageLength = 5,
-        dom = 'ftip'
-      ),
-      rownames = FALSE
-    )
+    datatable(cost_data, options = list(
+      pageLength = 5,
+      searching = FALSE,
+      dom = 't',
+      ordering = FALSE
+    )) %>%
+      formatCurrency(columns = c("Tuition", "Fees", "Housing", "Meals", 
+                                 "Books", "Transportation", "Personal", "Total"))
   })
   
-  # Display cost details table
+  # Cost details table
   output$cost_details_table <- renderDT({
     req(results())
-    r <- results()
     
-    # Format the table for display
-    display_table <- r$costs_table[, c("year", "age", r$cost_types, "total", "in_college")]
+    cost_data <- results()$working_final %>%
+      filter(in_college) %>%
+      select(year, age, cost_tuition, cost_fees, cost_housing, cost_meals, 
+             cost_books, cost_transport, cost_personal, cost_total)
     
-    # Format currency values
-    for(col in c(r$cost_types, "total")) {
-      display_table[[col]] <- paste0("$", format(round(display_table[[col]]), big.mark = ","))
-    }
+    # Rename columns for display
+    names(cost_data) <- c("Year", "Age", "Tuition", "Fees", "Housing", "Meals", 
+                          "Books", "Transportation", "Personal", "Total")
     
-    # Rename columns with display names
-    new_colnames <- colnames(display_table)
-    idx <- match(r$cost_types, new_colnames)
-    new_colnames[idx] <- r$category_lookup[r$cost_types]
-    colnames(display_table) <- new_colnames
-    
-    datatable(
-      display_table,
-      options = list(
-        pageLength = 10,
-        dom = 'ftip'
-      ),
-      rownames = FALSE,
-      filter = 'top'
-    )
+    datatable(cost_data, options = list(
+      pageLength = 10,
+      searching = FALSE,
+      dom = 't',
+      ordering = FALSE
+    )) %>%
+      formatCurrency(columns = c("Tuition", "Fees", "Housing", "Meals", 
+                                 "Books", "Transportation", "Personal", "Total"))
   })
   
-  # Display investment details table
+  # Cost category breakdown chart
+  output$cost_category_breakdown <- renderPlot({
+    req(results())
+    
+    cost_data <- results()$working_final %>%
+      filter(in_college) %>%
+      select(cost_tuition, cost_fees, cost_housing, cost_meals, 
+             cost_books, cost_transport, cost_personal)
+    
+    # Sum costs by category
+    cost_summary <- data.frame(
+      Category = c("Tuition", "Fees", "Housing", "Meals", "Books", "Transportation", "Personal"),
+      Amount = c(
+        sum(cost_data$cost_tuition),
+        sum(cost_data$cost_fees),
+        sum(cost_data$cost_housing),
+        sum(cost_data$cost_meals),
+        sum(cost_data$cost_books),
+        sum(cost_data$cost_transport),
+        sum(cost_data$cost_personal)
+      )
+    )
+    
+    # Add type (primary or secondary)
+    cost_summary$Type <- c(rep("Primary", 5), rep("Secondary", 2))
+    
+    # Calculate percentages
+    cost_summary$Percentage <- cost_summary$Amount / sum(cost_summary$Amount) * 100
+    
+    # Create pie chart
+    ggplot(cost_summary, aes(x = "", y = Amount, fill = Category)) +
+      geom_bar(stat = "identity", width = 1) +
+      coord_polar("y", start = 0) +
+      scale_fill_brewer(palette = "Set3") +
+      labs(title = "Total College Cost Breakdown", x = NULL, y = NULL, fill = "Category") +
+      theme_minimal() +
+      theme(axis.text = element_blank(),
+            axis.ticks = element_blank(),
+            panel.grid = element_blank()) +
+      geom_text(aes(label = paste0(Category, "\n$", format(round(Amount), big.mark = ","))), 
+                position = position_stack(vjust = 0.5))
+  })
+  
+  # Investment details table
   output$investment_details_table <- renderDT({
     req(results())
-    r <- results()
     
-    # Format the table for display
-    display_table <- r$investment_growth
-    
-    # Format currency values
-    cols_to_format <- c("primary_investment", "secondary_investment", "total_investment", "annual_contribution")
-    for(col in cols_to_format) {
-      display_table[[col]] <- paste0("$", format(round(display_table[[col]]), big.mark = ","))
-    }
+    investment_data <- results()$working_final %>%
+      filter(!in_college) %>%
+      select(year, age, principal_primary, principal_secondary, principal_total,
+             growth_primary, growth_secondary, growth_total,
+             balance_primary, balance_secondary, balance_total)
     
     # Rename columns for display
-    colnames(display_table) <- c("Year", "Age", "Primary Investment", "Secondary Investment", 
-                                 "Total Investment", "Annual Contribution")
+    names(investment_data) <- c("Year", "Age", 
+                                "Primary Principal", "Secondary Principal", "Total Principal",
+                                "Primary Growth", "Secondary Growth", "Total Growth",
+                                "Primary Balance", "Secondary Balance", "Total Balance")
     
-    datatable(
-      display_table,
-      options = list(
-        pageLength = 10,
-        dom = 'ftip'
-      ),
-      rownames = FALSE
-    )
+    datatable(investment_data, options = list(
+      pageLength = 10,
+      searching = FALSE,
+      dom = 't',
+      ordering = FALSE
+    )) %>%
+      formatCurrency(columns = c("Primary Principal", "Secondary Principal", "Total Principal",
+                                 "Primary Growth", "Secondary Growth", "Total Growth",
+                                 "Primary Balance", "Secondary Balance", "Total Balance"))
   })
   
-  # Display investment allocations table
-  output$investment_allocations_table <- renderDT({
+  # Investment principals table
+  output$investment_principals_table <- renderDT({
     req(results())
-    r <- results()
     
-    # Format the table for display
-    display_table <- r$investment_projection[, c("year", "primary_allocation", "secondary_allocation", "total_annual_investment")]
+    investment_data <- results()$working_final %>%
+      filter(!in_college) %>%
+      select(year, age, principal_primary, principal_secondary, principal_total)
     
-    # Format currency values
-    cols_to_format <- c("primary_allocation", "secondary_allocation", "total_annual_investment")
-    for(col in cols_to_format) {
-      display_table[[col]] <- paste0("$", format(round(display_table[[col]]), big.mark = ","))
-    }
+    # Calculate cumulative sums
+    investment_data <- investment_data %>%
+      mutate(
+        cumulative_primary = cumsum(principal_primary),
+        cumulative_secondary = cumsum(principal_secondary),
+        cumulative_total = cumsum(principal_total)
+      )
     
     # Rename columns for display
-    colnames(display_table) <- c("Year", "Primary Allocation", "Secondary Allocation", "Total Annual Investment")
+    names(investment_data) <- c("Year", "Age", 
+                                "Primary Annual", "Secondary Annual", "Total Annual",
+                                "Primary Cumulative", "Secondary Cumulative", "Total Cumulative")
     
-    datatable(
-      display_table,
-      options = list(
-        pageLength = 5,
-        dom = 'ftip'
-      ),
-      rownames = FALSE
-    )
+    datatable(investment_data, options = list(
+      pageLength = 10,
+      searching = FALSE,
+      dom = 't',
+      ordering = FALSE
+    )) %>%
+      formatCurrency(columns = c("Primary Annual", "Secondary Annual", "Total Annual",
+                                 "Primary Cumulative", "Secondary Cumulative", "Total Cumulative"))
   })
   
-  # Hide the result panels initially and show them after calculation
-  observe({
-    if(input$calculate == 0) {
-      shinyjs::hide("total_cost_box")
-      shinyjs::hide("primary_allocation_box")
-      shinyjs::hide("secondary_allocation_box")
-      shinyjs::hide("results_tabs")
-    } else {
-      shinyjs::show("total_cost_box")
-      shinyjs::show("primary_allocation_box")
-      shinyjs::show("secondary_allocation_box")
-      shinyjs::show("results_tabs")
-    }
+  # Annual principals chart
+  output$annual_principals_chart <- renderPlot({
+    req(results())
+    
+    investment_data <- results()$working_final %>%
+      filter(!in_college) %>%
+      select(year, principal_primary, principal_secondary)
+    
+    # Calculate cumulative sums
+    investment_data <- investment_data %>%
+      mutate(
+        cumulative_primary = cumsum(principal_primary),
+        cumulative_secondary = cumsum(principal_secondary)
+      )
+    
+    # Prepare data for plot
+    cumulative_data <- investment_data %>%
+      select(year, cumulative_primary, cumulative_secondary) %>%
+      rename(
+        "Primary Fund" = cumulative_primary,
+        "Secondary Fund" = cumulative_secondary
+      ) %>%
+      melt(id.vars = "year")
+    
+    annual_data <- investment_data %>%
+      select(year, principal_primary, principal_secondary) %>%
+      rename(
+        "Primary Fund" = principal_primary,
+        "Secondary Fund" = principal_secondary
+      ) %>%
+      melt(id.vars = "year")
+    
+    # Create two plots
+    p1 <- ggplot(annual_data, aes(x = year, y = value, fill = variable)) +
+      geom_bar(stat = "identity", position = "stack") +
+      scale_fill_manual(values = c("Primary Fund" = "#3498db", "Secondary Fund" = "#9b59b6")) +
+      labs(title = "Annual Contributions", x = "Year", y = "Amount ($)", fill = "Fund") +
+      scale_y_continuous(labels = dollar_format()) +
+      theme_minimal() +
+      theme(legend.position = "bottom")
+    
+    p2 <- ggplot(cumulative_data, aes(x = year, y = value, fill = variable)) +
+      geom_area(alpha = 0.7) +
+      scale_fill_manual(values = c("Primary Fund" = "#3498db", "Secondary Fund" = "#9b59b6")) +
+      labs(title = "Cumulative Contributions", x = "Year", y = "Amount ($)", fill = "Fund") +
+      scale_y_continuous(labels = dollar_format()) +
+      theme_minimal() +
+      theme(legend.position = "bottom")
+    
+    # Arrange both plots
+    grid.arrange(p1, p2, ncol = 2)
   })
+  
 }
 
 # Run the application
