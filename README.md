@@ -11,7 +11,6 @@ This R Shiny application helps users plan for higher education expenses through 
 - **Data Entry**: Allows users to modify cost assumptions with automatic inflation adjustments
 - **Visualization**: Presents financial data through charts and tables
 - **Surplus Analysis**: Calculates expected investment surplus or deficit
-- **Detailed Breakdowns**: Shows year-by-year analysis of investment growth and educational costs
 
 ## Technical Implementation
 
@@ -21,7 +20,6 @@ The application includes:
 - **Financial Modeling**: Applies time-series forecasting and compound growth calculations
 - **Data Visualization**: Uses ggplot2, gridExtra, and other R visualization libraries
 - **Dashboard Interface**: Built with shinydashboard for an organized, tab-based layout
-- **Data Transformation**: Implements dplyr and reshape2 for data manipulation
 - **Interactive Tables**: Uses the DT package for sortable and filterable data tables
 
 ## Financial Models
@@ -41,13 +39,3 @@ The application incorporates several financial models:
 4. Explore the results across different tabs
 5. Adjust parameters to test different scenarios
 
-## Implementation Details
-
-The application demonstrates R programming techniques including:
-
-- Reactive value management
-- Event-driven calculation
-- Dynamic UI generation
-- Financial calculations
-- Data transformation
-- Various visualization methods
