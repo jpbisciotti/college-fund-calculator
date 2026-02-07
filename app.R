@@ -248,13 +248,13 @@ server <- function(input, output, session) {
         tibble::tibble(
           year = c(2025, 2026),
           age = c(0, 1),
-          cost_tuition = c(10086, 10490),
-          cost_fees = c(1772, 1842),
-          cost_housing = c(9562, 9944),
-          cost_meals = c(6396, 6651),
-          cost_books = c(1250, 1300),
-          cost_transport = c(1514, 1574),
-          cost_personal = c(1200, 1248)
+          cost_tuition = c(10086, 10908),
+          cost_fees = c(1772, 1800),
+          cost_housing = c(9562, 10290),
+          cost_meals = c(6396, 7180),
+          cost_books = c(1250, 1250),
+          cost_transport = c(1514, 1514),
+          cost_personal = c(1200, 1200)
         )
       }
     } 
