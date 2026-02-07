@@ -280,13 +280,13 @@ server <- function(input, output, session) {
   costs_df <- reactiveVal(tibble::tibble(
     year = c(2025, 2026),
     age = c(0, 1),
-    cost_tuition = c(10086, 10490),
-    cost_fees = c(1772, 1842),
-    cost_housing = c(9562, 9944),
-    cost_meals = c(6396, 6651),
-    cost_books = c(1250, 1300),
-    cost_transport = c(1514, 1574),
-    cost_personal = c(1200, 1248)
+    cost_tuition = c(10086, 10908),
+    cost_fees = c(1772, 1800),
+    cost_housing = c(9562, 10290),
+    cost_meals = c(6396, 7180),
+    cost_books = c(1250, 1250),
+    cost_transport = c(1514, 1514),
+    cost_personal = c(1200, 1200)
   ))
   
   # Update year and age in costs table when parameters change
@@ -527,10 +527,10 @@ server <- function(input, output, session) {
       
       # Calculate required initial investment for expenses
       initial_principal_primary <- 1
-      fund_value_total <- 0
+      fund_value_primary <- 0
       df_loop <- working_01
       
-      while ((cost_college_primary - fund_value_total) > 0) {
+      while ((cost_college_primary - fund_value_primary) > 0) {
         df_loop <- calculate_growth(
           df = df_loop, 
           col_cumprod = "cumprod_principal",
@@ -544,9 +544,9 @@ server <- function(input, output, session) {
           col_balance_current = "balance_primary"
         )
         
-        fund_value_total <- max(df_loop[["balance_primary"]])
+        fund_value_primary <- max(df_loop[["balance_primary"]])
         
-        if (!(cost_college_total - fund_value_total) > 0) {
+        if (!(cost_college_primary - fund_value_primary) > 0) {
           break
         }
         
@@ -561,10 +561,10 @@ server <- function(input, output, session) {
       
       # Calculate required initial investment for expenses
       initial_principal_secondary <- 1
-      fund_value_total <- 0
+      fund_value_secondary <- 0
       df_loop <- working_01
       
-      while ((cost_college_secondary - fund_value_total) > 0) {
+      while ((cost_college_secondary - fund_value_secondary) > 0) {
         df_loop <- calculate_growth(
           df = df_loop, 
           col_cumprod = "cumprod_principal",
@@ -578,9 +578,9 @@ server <- function(input, output, session) {
           col_balance_current = "balance_secondary"
         )
         
-        fund_value_total <- max(df_loop[["balance_secondary"]])
+        fund_value_secondary <- max(df_loop[["balance_secondary"]])
         
-        if (!(cost_college_total - fund_value_total) > 0) {
+        if (!(cost_college_secondary - fund_value_secondary) > 0) {
           break
         }
         
