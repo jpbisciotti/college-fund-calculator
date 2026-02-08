@@ -49,9 +49,20 @@ ui <- dashboardPage(
                   ),
                   fluidRow(
                     column(4,
-                           numericInput("pctpoint_inflation", 
-                                        "Expected Annual Education Inflation (%)", 
-                                        value = 4, min = 0, max = 10, step = 0.1)
+                           radioButtons("inflation_method", "Inflation Method",
+                                        choices = c("Historical (from entered costs)" = "historical",
+                                                    "Fixed Rate" = "fixed"),
+                                        selected = "historical", inline = TRUE),
+                           conditionalPanel(
+                             condition = "input.inflation_method == 'fixed'",
+                             numericInput("pctpoint_inflation", 
+                                          "Expected Annual Education Inflation (%)", 
+                                          value = 4, min = 0, max = 10, step = 0.1)
+                           ),
+                           conditionalPanel(
+                             condition = "input.inflation_method == 'historical'",
+                             uiOutput("historical_inflation_display")
+                           )
                     ),
                     column(4,
                            numericInput("pctpoint_principal", 
@@ -208,9 +219,15 @@ ui <- dashboardPage(
                   tags$li(strong("Primary Fund:"), "Typically a more conservative investment approach for essential expenses"),
                   tags$li(strong("Secondary Fund:"), "Often allows for more aggressive growth strategy for discretionary expenses")
                 ),
+                p("Inflation Methods:"),
+                tags$ul(
+                  tags$li(strong("Historical Inflation:"), "Calculated as the compound annual growth rate (CAGR) from the cost data you enter. Requires at least 2 years of data. Formula: ((ending cost / starting cost) ^ (1 / years)) - 1"),
+                  tags$li(strong("Fixed Rate:"), "A manually specified annual inflation rate applied uniformly to project future costs")
+                ),
                 p("Instructions:"),
                 tags$ol(
                   tags$li("Fill in the parameters in the 'Investment Parameters' section"),
+                  tags$li("Choose an inflation method: Historical (default) uses your entered cost data; Fixed Rate uses a manually specified percentage"),
                   tags$li("Enter any known college costs in the 'College Cost Data Entry' table"),
                   tags$li("Click 'Calculate Required Investment' to see the results"),
                   tags$li("Review the summary tab for an overview of projected costs and required investments"),
@@ -234,6 +251,7 @@ server <- function(input, output, session) {
       age_initial = 0, 
       age_college_start = 18, 
       year_initial = 2025, 
+      inflation_method = "historical",
       pctpoint_inflation = 4, 
       pctpoint_principal = 4, 
       pctpoint_primary = 7, 
@@ -310,6 +328,90 @@ server <- function(input, output, session) {
     costs_df(costs_entered)
   })
   
+  # --------------------------------------------------------------------------
+  # Historical inflation calculation (CAGR from entered cost data)
+  # --------------------------------------------------------------------------
+  calculated_inflation <- reactive({
+    costs_entered <- costs_df()
+    
+    # Need at least 2 rows to compute historical inflation
+    if (nrow(costs_entered) < 2) {
+      return(NULL)
+    }
+    
+    # Compute total cost of attendance for each row
+    total_costs <- rowSums(costs_entered[, cost_values, drop = FALSE])
+    
+    starting_cost <- total_costs[1]
+    ending_cost   <- total_costs[length(total_costs)]
+    n_years       <- nrow(costs_entered) - 1
+    
+    # Guard against zero or negative starting cost
+    if (is.na(starting_cost) || starting_cost <= 0) {
+      return(NULL)
+    }
+    
+    # CAGR formula: ((ending / starting) ^ (1/n)) - 1
+    cagr <- (ending_cost / starting_cost) ^ (1 / n_years) - 1
+    return(cagr)
+  })
+  
+  # --------------------------------------------------------------------------
+  # Effective inflation rate: resolves which rate to actually use
+  # --------------------------------------------------------------------------
+  effective_inflation <- reactive({
+    if (input$inflation_method == "historical") {
+      hist_rate <- calculated_inflation()
+      if (!is.null(hist_rate)) {
+        return(hist_rate)
+      } else {
+        # Fall back to fixed rate when historical is unavailable
+        return(input$pctpoint_inflation / 100)
+      }
+    } else {
+      return(input$pctpoint_inflation / 100)
+    }
+  })
+  
+  # --------------------------------------------------------------------------
+  # UI output: display the historical inflation rate or fallback message
+  # --------------------------------------------------------------------------
+  output$historical_inflation_display <- renderUI({
+    hist_rate <- calculated_inflation()
+    costs_entered <- costs_df()
+    n_rows <- nrow(costs_entered)
+    
+    if (!is.null(hist_rate)) {
+      tags$div(
+        style = "padding: 8px 12px; background-color: #d5edda; border: 1px solid #c3e6cb; border-radius: 4px; margin-top: 5px;",
+        tags$strong(
+          style = "color: #155724;",
+          icon("chart-line"),
+          sprintf(" Historical inflation rate: %.1f%%", hist_rate * 100)
+        ),
+        tags$br(),
+        tags$small(
+          style = "color: #155724;",
+          sprintf("Computed as CAGR from %d year(s) of entered cost data", n_rows)
+        )
+      )
+    } else {
+      tags$div(
+        style = "padding: 8px 12px; background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; margin-top: 5px;",
+        tags$strong(
+          style = "color: #856404;",
+          icon("exclamation-triangle"),
+          sprintf(" Not enough data \u2014 using fixed rate: %.1f%%", input$pctpoint_inflation)
+        ),
+        tags$br(),
+        tags$small(
+          style = "color: #856404;",
+          "Enter at least 2 years of cost data to enable historical inflation"
+        )
+      )
+    }
+  })
+  
   # Display costs table
   output$costs_table <- renderDT({
     datatable(
@@ -341,8 +443,8 @@ server <- function(input, output, session) {
     new_row$year <- new_row$year + 1
     new_row$age <- new_row$age + 1
     
-    # Apply inflation to costs
-    inflation_factor <- 1 + (input$pctpoint_inflation / 100)
+    # Apply inflation to costs (use effective inflation for the new row projection)
+    inflation_factor <- 1 + effective_inflation()
     for(col in cost_values) {
       new_row[[col]] <- new_row[[col]] * inflation_factor
     }
@@ -362,10 +464,26 @@ server <- function(input, output, session) {
     age_initial <- input$age_initial
     age_college_start <- input$age_college_start
     year_initial <- input$year_initial
-    percent_inflation <- input$pctpoint_inflation / 100
+    percent_inflation <- effective_inflation()
     percent_principal <- input$pctpoint_principal / 100
     percent_primary <- input$pctpoint_primary / 100
     percent_secondary <- input$pctpoint_secondary / 100
+    
+    # Determine which inflation method was actually used
+    inflation_method_used <- input$inflation_method
+    hist_rate <- calculated_inflation()
+    if (inflation_method_used == "historical" && is.null(hist_rate)) {
+      inflation_method_used <- "fixed (fallback)"
+    }
+    
+    # Notify user if historical was requested but fell back to fixed
+    if (input$inflation_method == "historical" && is.null(hist_rate)) {
+      showNotification(
+        "Historical inflation unavailable (need 2+ years of cost data). Using fixed rate instead.",
+        type = "warning",
+        duration = 8
+      )
+    }
     
     # Extract costs from the table
     costs_entered <- costs_df()
@@ -632,7 +750,9 @@ server <- function(input, output, session) {
       college_end_year = college_end_year,
       years_eligible = years_eligible,
       years_during_college = years_during_college,
-      costs_college_each = costs_college_each
+      costs_college_each = costs_college_each,
+      inflation_rate_used = percent_inflation,
+      inflation_method_used = inflation_method_used
     ))
     
     if (FALSE) {
@@ -691,8 +811,18 @@ server <- function(input, output, session) {
   output$summary_text <- renderText({
     req(results())
     
+    # Format the inflation method description
+    inflation_desc <- if (results()$inflation_method_used == "historical") {
+      sprintf("Historical (CAGR): %.1f%%", results()$inflation_rate_used * 100)
+    } else if (results()$inflation_method_used == "fixed (fallback)") {
+      sprintf("Fixed (fallback): %.1f%%", results()$inflation_rate_used * 100)
+    } else {
+      sprintf("Fixed: %.1f%%", results()$inflation_rate_used * 100)
+    }
+    
     paste0(
-      "College Years: ", results()$college_start_year, " - ", results()$college_end_year, "\n\n",
+      "College Years: ", results()$college_start_year, " - ", results()$college_end_year, "\n",
+      "Inflation Method: ", inflation_desc, "\n\n",
       "Total College Cost: ", dollar(results()$cost_college_total), "\n",
       "  - Primary Expenses: ", dollar(results()$cost_college_primary), "\n",
       "  - Secondary Expenses: ", dollar(results()$cost_college_secondary), "\n\n",
