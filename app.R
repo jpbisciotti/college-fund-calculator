@@ -31,27 +31,54 @@ ui <- dashboardPage(
                   title = "Investment Parameters", status = "primary", solidHeader = TRUE,
                   width = 12,
                   fluidRow(
+                    column(12,
+                           actionButton("calculate", "Calculate Required Investment", 
+                                        class = "btn-primary", width = "100%")
+                    )
+                  ),
+                  fluidRow(
                     column(3,
-                           numericInput("years_of_college", "Years of College", value = 4, min = 1, max = 10, step = 1)
+                           numericInput("year_initial", "Year at Start of Investing", 
+                                        value = 2025, min = 2025, max = 2050, step = 1)
                     ),
                     column(3,
                            numericInput("age_initial", "Age at Start of Investing", 
                                         value = 0, min = 0, max = 17, step = 1)
-                    ),
+                    )
+                  ),
+                  fluidRow(
                     column(3,
                            numericInput("age_college_start", 
                                         "Age at Start of Higher Education", value = 18, min = 16, max = 25, step = 1)
                     ),
                     column(3,
-                           numericInput("year_initial", "Year at Start of Investing", 
-                                        value = 2025, min = 2025, max = 2050, step = 1)
+                           numericInput("years_of_college", "Years of College", value = 4, min = 1, max = 10, step = 1)
                     )
                   ),
                   fluidRow(
                     column(4,
-                           radioButtons("inflation_method", "Inflation Method",
-                                        choices = c("Historical (from entered costs)" = "historical",
-                                                    "Fixed Rate" = "fixed"),
+                           numericInput("pctpoint_primary", 
+                                        "Expected Growth - Primary Fund (%)", 
+                                        value = 7, min = 0, max = 15, step = 0.1)
+                    ),
+                    column(4,
+                           numericInput("pctpoint_secondary", 
+                                        "Expected Growth - Secondary Fund (%)", 
+                                        value = 10, min = 0, max = 15, step = 0.1)
+                    )
+                  ),
+                  fluidRow(
+                    column(4,
+                           numericInput("pctpoint_principal", 
+                                        "Annual Increase in Contributions (%)", 
+                                        value = 4, min = 0, max = 10, step = 0.1)
+                    )
+                  ),
+                  fluidRow(
+                    column(4,
+                           radioButtons("inflation_method", "Education Inflation",
+                                        choices = c("Historical Education Inflation Rate" = "historical",
+                                                    "Fixed Rate of Education Inflation" = "fixed"),
                                         selected = "historical", inline = TRUE),
                            conditionalPanel(
                              condition = "input.inflation_method == 'fixed'",
@@ -63,27 +90,6 @@ ui <- dashboardPage(
                              condition = "input.inflation_method == 'historical'",
                              uiOutput("historical_inflation_display")
                            )
-                    ),
-                    column(4,
-                           numericInput("pctpoint_principal", 
-                                        "Annual Increase in Contributions (%)", 
-                                        value = 4, min = 0, max = 10, step = 0.1)
-                    ),
-                    column(4,
-                           numericInput("pctpoint_primary", 
-                                        "Expected Growth - Primary Fund (%)", 
-                                        value = 7, min = 0, max = 15, step = 0.1)
-                    )
-                  ),
-                  fluidRow(
-                    column(4,
-                           numericInput("pctpoint_secondary", 
-                                        "Expected Growth - Secondary Fund (%)", 
-                                        value = 10, min = 0, max = 15, step = 0.1)
-                    ),
-                    column(8,
-                           actionButton("calculate", "Calculate Required Investment", 
-                                        class = "btn-primary", width = "100%")
                     )
                   )
                 )
