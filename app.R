@@ -7,7 +7,7 @@ library(scales)
 library(gridExtra)
 library(shinyjs)
 library(dplyr)
-library(reshape2)
+library(tidyr)
 
 # UI definition 
 ui <- dashboardPage(
@@ -33,10 +33,6 @@ ui <- dashboardPage(
                     status = "primary", 
                     solidHeader = TRUE, 
                     width = 12,
-                    fluidRow(column(12, actionButton("calculate", 
-                                                     "Calculate Required Investment", 
-                                                     class = "btn-primary", 
-                                                     width = "100%"))),
                     fluidRow(column(3, numericInput("investment_nextyear", 
                                                     "Next Year of Investing", 
                                                     value = 2026, 
@@ -100,7 +96,12 @@ ui <- dashboardPage(
                                     conditionalPanel(condition = "input.inflation_method == 'historical'",
                                                      uiOutput("historical_inflation_display"
                                                      ))
-                    ))
+                    )),
+                    # calculate button to bottom of form 
+                    fluidRow(column(12, actionButton("calculate", 
+                                                     "Calculate Required Investment", 
+                                                     class = "btn-primary", 
+                                                     width = "100%")))
                 )),
               
               # Costs data entry panel
@@ -111,6 +112,7 @@ ui <- dashboardPage(
                     solidHeader = TRUE,
                     width = 12,
                     p("Enter known costs for future college expenses. Additional rows will be automatically added as needed."),
+                    p(tags$em("Note: Year and Age columns are calculated automatically and cannot be edited. Balance and cost columns accept non-negative numbers.")),
                     DTOutput("entry_table"),
                     actionButton("add_year", "Add Another Year", class = "btn-success"))),
               
@@ -212,6 +214,11 @@ ui <- dashboardPage(
                   tags$ul(tags$li(strong("Historical Inflation:"), "Calculated as the compound annual growth rate (CAGR) from the cost data you enter. Requires at least 2 years of data. Formula: ((ending cost / starting cost) ^ (1 / years)) - 1"),
                           tags$li(strong("Fixed Rate:"), "A manually specified annual inflation rate applied uniformly to project future costs")
                   ),
+                  p("How Projections Work:"),
+                  tags$ul(tags$li("Future costs are projected forward from the last row of entered cost data using the selected inflation method."),
+                          tags$li("If you enter multiple years of cost data with varying trajectories, the projection will extend from the most recent year's values, not from an average or trend line."),
+                          tags$li("For best results, ensure your most recent entered year reflects the cost levels you expect to project from.")
+                  ),
                   p("Instructions:"),
                   tags$ol(tags$li("Fill in the parameters in the 'Investment Parameters' section"),
                           tags$li("Choose an inflation method: Historical (default) uses your entered cost data; Fixed Rate uses a manually specified percentage"),
@@ -228,24 +235,6 @@ ui <- dashboardPage(
 
 # Server logic 
 server <- function(input, output, session) {
-  
-  if (FALSE) {
-    
-    # Guarded clause for future dev or troubleshooting
-    input <- list(
-      college_studyyears = 4, 
-      investment_startage = 0, 
-      college_startage = 18, 
-      investment_nextyear = 2026,
-      investment_startyear = 2025, 
-      inflation_method = "historical",
-      inflation_rate = 4, 
-      contribution_rate = 4, 
-      primary_rate = 7, 
-      secondary_rate = 10
-    )
-    
-  }
   
   # Create a lookup table to match cost_varvals to cost_varlabs
   # Define the cost_varvals and cost_varlabs globally to ensure consistency
@@ -272,29 +261,6 @@ server <- function(input, output, session) {
   primary_cost_varvals <- unname(primary_cost_dictionary)
   secondary_cost_varvals <- unname(secondary_cost_dictionary)
   cost_varvals <- unname(cost_dictionary)
-  
-  if (FALSE) {
-    # Guarded clause for future dev or troubleshooting
-    entry_df <- function(reacted_df = NULL) {
-      if (!is.null(reacted_df)) {
-        current_costs
-      } else {
-        tibble::tibble(
-          year = c(2025, 2026),
-          age = c(0, 1),
-          primary_balance = c(0, 6000), 
-          secondary_balance = c(0, 0),
-          cost_tuition = c(10086, 10908),
-          cost_fees = c(1772, 1800),
-          cost_housing = c(9562, 10290),
-          cost_meals = c(6396, 7180),
-          cost_books = c(1250, 1250),
-          cost_transport = c(1514, 1514),
-          cost_personal = c(1200, 1200)
-        )
-      }
-    } 
-  }
   
   # Initial costs data frame
   entry_df <- reactiveVal(tibble::tibble(
@@ -335,35 +301,6 @@ server <- function(input, output, session) {
   # Historical inflation calculation (CAGR from entered cost data)
   # --------------------------------------------------------------------------
   
-  if (FALSE) {
-    
-    calculated_historical_inflation <- function() {
-      reacted_df <- entry_df()
-      
-      # Need at least 2 rows to compute historical inflation
-      if (nrow(reacted_df) < 2) {
-        return(NULL)
-      }
-      
-      # Compute total cost of attendance for each row
-      row_costs <- rowSums(reacted_df[, cost_varvals, drop = FALSE])
-      
-      first_cost <- row_costs[1]
-      last_cost   <- row_costs[length(row_costs)]
-      n_years       <- nrow(reacted_df) - 1
-      
-      # Guard against zero or negative starting cost
-      if (is.na(first_cost) || first_cost <= 0) {
-        return(NULL)
-      }
-      
-      # CAGR formula: ((ending / starting) ^ (1/n)) - 1
-      cagr <- (last_cost / first_cost) ^ (1 / n_years) - 1
-      return(cagr)
-    }
-    
-  }
-  
   calculated_historical_inflation <- reactive({
     reacted_df <- entry_df()
     
@@ -392,23 +329,6 @@ server <- function(input, output, session) {
   # --------------------------------------------------------------------------
   # Effective inflation rate: resolves which rate to actually use
   # --------------------------------------------------------------------------
-  
-  if (FALSE) {
-    # Guarded clause for future dev or troubleshooting
-    effective_inflation <- function() {
-      if (input$inflation_method == "historical") {
-        inflation_historical <- calculated_historical_inflation()
-        if (!is.null(inflation_historical)) {
-          return(inflation_historical)
-        } else {
-          # Fall back to fixed rate when historical is unavailable
-          return(input$inflation_rate / 100)
-        }
-      } else {
-        return(input$inflation_rate / 100)
-      }
-    }
-  }
   
   effective_inflation <- reactive({
     if (input$inflation_method == "historical") {
@@ -475,13 +395,25 @@ server <- function(input, output, session) {
     )
   })
   
-  # FIX 4: Update costs data frame when cells are edited
-  # Changed from input$costs_table_cell_edit to input$entry_table_cell_edit
-  # to match the renamed DT output ID
+  # Cell edit handler with validation: prevent editing year/age, validate numeric non-negative
+  # Update costs data frame when cells are edited
   observeEvent(input$entry_table_cell_edit, {
     info <- input$entry_table_cell_edit
     reacted_df <- entry_df()
-    reacted_df[info$row, info$col] <- info$value
+    
+    # Prevent editing year and age columns (cols 1 and 2)
+    if (info$col <= 2) {
+      showNotification("Year and Age are calculated automatically.", type = "warning")
+      return()
+    }
+    
+    new_val <- as.numeric(info$value)
+    if (is.na(new_val) || new_val < 0) {
+      showNotification("Please enter a non-negative number.", type = "error")
+      return()
+    }
+    
+    reacted_df[info$row, info$col] <- new_val
     entry_df(reacted_df)
   })
   
@@ -564,20 +496,20 @@ server <- function(input, output, session) {
         college_endage = college_endage,
         college_endyear = college_endyear,
         college_startyear = college_startyear,
-        college_endyear = college_endyear,
         investment_years = investment_years
       )
     
     working_01 <- working_00 %>% 
       # Indicate if in in_college during eligible range of years/ages
       dplyr::mutate(in_college = analysis_years %in% college_years) %>% 
-      # Join reacted_df
-      dplyr::left_join(reacted_df) %>% 
-      dplyr::mutate(primary_cost = rowSums(select({.}, tidyselect::all_of(unname(primary_cost_dictionary))))) %>% 
-      dplyr::mutate(secondary_cost = rowSums(select({.}, tidyselect::all_of(unname(secondary_cost_dictionary))))) %>% 
+      # Join with explicit `by` to avoid implicit column matching
+      dplyr::left_join(reacted_df, by = c("year", "age")) %>% 
+      # pick() for idiomatic dplyr 1.1+
+      dplyr::mutate(primary_cost = rowSums(pick(tidyselect::all_of(unname(primary_cost_dictionary))))) %>% 
+      dplyr::mutate(secondary_cost = rowSums(pick(tidyselect::all_of(unname(secondary_cost_dictionary))))) %>% 
       dplyr::mutate(cost_total = primary_cost + secondary_cost) %>% 
-      # FIX 2: Use 0 instead of 1 for known-data rows so that factor = 1 + 0 = 1 (no change)
-      # Previously used 1, which made factor = 1 + 1 = 2, doubling all indices
+      # Use 0 for known-data rows so that factor = 1 + 0 = 1 (no change)
+      # Do not use 1, which made factor = 1 + 1 = 2, doubling all indices
       dplyr::mutate(inflation_rate = ifelse(!is.na(cost_tuition), 0, inflation_rate)) %>% 
       dplyr::mutate(contribution_rate = ifelse(!is.na(cost_tuition), 0, contribution_rate)) %>% 
       dplyr::mutate(primary_rate = ifelse(!is.na(cost_tuition), 0, primary_rate)) %>% 
@@ -621,7 +553,17 @@ server <- function(input, output, session) {
       dplyr::pull(cost_total) %>% 
       sum()
     
-    # Create a function that calculate investment growth
+    # --------------------------------------------------------------------------
+    # calculate_growth: computes investment growth row by row
+    #
+    # Contract:
+    #   - col_balance must contain NA for rows that should be projected.
+    #   - Non-NA values in col_balance are treated as "known" historical balances
+    #     and will not be recalculated. If you intend a balance of $0 for a
+    #     projected row, leave it as NA (the function starts from 0 automatically).
+    #   - The function returns the modified data frame with col_contribution,
+    #     col_growth, and col_balance populated.
+    # --------------------------------------------------------------------------
     calculate_growth <- function(
     df, 
     col_index,
@@ -652,13 +594,11 @@ server <- function(input, output, session) {
       
       n_balance_history <- length(na.omit(balance))
       
-      i <- NULL
       # Calculate fund growth and balance
       for (i in seq_len(nrow(df))) {
         
         # Calculate fund growth based on formula
         contribution_current <- if (i <= n_balance_history) {
-          # TODO: back-calculate
           0
         } else {
           if (age[i] < college_startage[i]) { 
@@ -677,7 +617,6 @@ server <- function(input, output, session) {
         
         # Calculate fund growth based on formula
         if (i <= n_balance_history) {
-          # TODO: back-calculate
           growth[i] <- 0
         } else {
           growth[i] <- (balance_previous + contribution_current) * rate[i]
@@ -689,122 +628,104 @@ server <- function(input, output, session) {
         } else {
           balance[i] <- balance_previous + contribution_current + growth[i]
         }
-        
-        
       }
       
-      # FIX 3: Assign the full contribution vector, not just the scalar from the
-      # last loop iteration. The original code assigned contribution_current which
-      # is a single value that R would recycle across all rows.
+      # Assign the full contribution vector, not just the scalar from the
+      # last loop iteration.
       df[[col_contribution]] <- contribution
       df[[col_growth]] <- growth
       df[[col_balance]] <- balance
       return(df)
     }
     
-    {
+    # --------------------------------------------------------------------------
+    # Binary search for contribution seed instead of brute-force loop.
+    # The relationship between seed and final balance is monotonic, so binary
+    # search finds the answer in ~14 iterations instead of thousands.
+    # --------------------------------------------------------------------------
+    find_seed <- ffunction(working_df, target_cost, col_index, col_contribution,
+                          col_age, col_college_startage, col_cost, col_rate,
+                          col_growth, col_balance, max_seed = 19999) {
+      lo <- 1
+      hi <- max_seed
+      result_df <- working_df
       
-      # Calculate required initial investment for expenses
-      primary_contribution_seed <- 1
-      primary_fund_balance <- 0
-      
-      if (FALSE) {
-        # Guarded clause for future dev or troubleshooting
-        df = df_loop
-        col_index = "contribution_index"
-        contribution_seed = primary_contribution_seed
-        col_contribution = "primary_contribution"
-        col_age = "age"
-        col_college_startage = "college_startage"
-        col_cost = "primary_cost"
-        col_rate = "primary_rate"
-        col_growth = "primary_growth"
-        col_balance = "primary_balance"
-      }
-      
-      while ((primary_contribution_seed < 19999) && (college_primary_cost - primary_fund_balance) > 0) {
+      while (lo < hi) {
+        mid <- floor((lo + hi) / 2)
         
-        # FIX 1: Reset df_loop from working_01 each iteration so that the
-        # original NA balance values are preserved. Without this, after the first
-        # iteration the balance column is fully populated and n_balance_history
-        # equals nrow(df), causing the seed increment to have no effect.
-        df_loop <- working_01
-        
-        df_loop <- calculate_growth(
-          df = df_loop, 
-          col_index = "contribution_index",
-          contribution_seed = primary_contribution_seed, 
-          col_contribution = "primary_contribution", 
-          col_age = "age", 
-          col_college_startage = "college_startage", 
-          col_cost = "primary_cost",
-          col_rate = "primary_rate",
-          col_growth = "primary_growth",
-          col_balance = "primary_balance"
+        # Reset from working_01 each iteration so that the
+        # original NA balance values are preserved.
+        df_trial <- calculate_growth(
+          df = working_df,
+          col_index = col_index,
+          contribution_seed = mid,
+          col_contribution = col_contribution,
+          col_age = col_age,
+          col_college_startage = col_college_startage,
+          col_cost = col_cost,
+          col_rate = col_rate,
+          col_growth = col_growth,
+          col_balance = col_balance
         )
         
-        primary_fund_balance <- max(df_loop[["primary_balance"]])
+        balance <- max(df_trial[[col_balance]])
         
-        if (!(college_primary_cost - primary_fund_balance) > 0) {
-          break
+        if (balance >= target_cost) {
+          hi <- mid
+          result_df <- df_trial
+        } else {
+          lo <- mid + 1
         }
-        
-        primary_contribution_seed <- primary_contribution_seed + 1
       }
       
-      print(primary_contribution_seed)
-      
+      list(seed = lo, df = result_df)
     }
     
-    {
-      
-      # Calculate required initial investment for expenses
-      secondary_contribution_seed <- 1
-      secondary_fund_balance <- 0
-      
-      if (FALSE) {
-        # Guarded clause for future dev or troubleshooting
-        df = df_loop
-        col_index = "contribution_index"
-        contribution_seed = secondary_contribution_seed
-        col_contribution = "secondary_contribution"
-        col_age = "age"
-        col_college_startage = "college_startage"
-        col_cost = "secondary_cost"
-        col_rate = "secondary_rate"
-        col_growth = "secondary_growth"
-        col_balance = "secondary_balance"
-      }
-      
-      while ((secondary_contribution_seed < 19999) && (college_secondary_cost - secondary_fund_balance) > 0) {
-        
-        # FIX 1 (continued): Same reset for secondary fund loop
-        df_loop <- working_01
-        
-        df_loop <- calculate_growth(
-          df = df_loop, 
-          col_index = "contribution_index",
-          contribution_seed = secondary_contribution_seed, 
-          col_contribution = "secondary_contribution", 
-          col_age = "age", 
-          col_college_startage = "college_startage", 
-          col_cost = "secondary_cost",
-          col_rate = "secondary_rate",
-          col_growth = "secondary_growth",
-          col_balance = "secondary_balance"
-        )
-        
-        secondary_fund_balance <- max(df_loop[["secondary_balance"]])
-        
-        if (!(college_secondary_cost - secondary_fund_balance) > 0) {
-          break
-        }
-        
-        secondary_contribution_seed <- secondary_contribution_seed + 1
-      }
-      
-      print(secondary_contribution_seed)
-      
+    # Find primary contribution seed via binary search
+    primary_result <- find_seed(
+      working_df = working_01,
+      target_cost = college_primary_cost,
+      col_index = "contribution_index",
+      col_contribution = "primary_contribution",
+      col_age = "age",
+      col_college_startage = "college_startage",
+      col_cost = "primary_cost",
+      col_rate = "primary_rate",
+      col_growth = "primary_growth",
+      col_balance = "primary_balance"
+    )
+    primary_contribution_seed <- primary_result$seed
+    
+    # Find secondary contribution seed via binary search
+    secondary_result <- find_seed(
+      working_df = working_01,
+      target_cost = college_secondary_cost,
+      col_index = "contribution_index",
+      col_contribution = "secondary_contribution",
+      col_age = "age",
+      col_college_startage = "college_startage",
+      col_cost = "secondary_cost",
+      col_rate = "secondary_rate",
+      col_growth = "secondary_growth",
+      col_balance = "secondary_balance"
+    )
+    secondary_contribution_seed <- secondary_result$seed
+    
+    # Warn user if max seed cap was hit and target not met
+    primary_fund_balance <- max(primary_result$df[["primary_balance"]])
+    if ((college_primary_cost - primary_fund_balance) > 0) {
+      showNotification(
+        "Primary fund target could not be met with max $19,999/year contribution.",
+        type = "error", duration = 10
+      )
+    }
+    
+    secondary_fund_balance <- max(secondary_result$df[["secondary_balance"]])
+    if ((college_secondary_cost - secondary_fund_balance) > 0) {
+      showNotification(
+        "Secondary fund target could not be met with max $19,999/year contribution.",
+        type = "error", duration = 10
+      )
     }
     
     working_02 <- working_01 %>% 
@@ -836,7 +757,7 @@ server <- function(input, output, session) {
     
     working_final <- working_02
     
-    # Return a list of all calculated values - make sure this is COMPLETE
+    # Return a list of all calculated values
     return(list(
       working_final = working_final,
       college_cost = college_cost,
@@ -852,27 +773,6 @@ server <- function(input, output, session) {
       inflation_rate = inflation_rate,
       inflation_method = inflation_method
     ))
-    
-    if (FALSE) {
-      results <- function() {
-        list(
-          working_final = working_final,
-          college_cost = college_cost,
-          college_primary_cost = college_primary_cost,
-          college_secondary_cost = college_secondary_cost,
-          primary_contribution_seed = primary_contribution_seed,
-          secondary_contribution_seed = secondary_contribution_seed,
-          college_startyear = college_startyear,
-          college_endyear = college_endyear,
-          analysis_years = analysis_years,
-          college_years = college_years,
-          college_category_costs = college_category_costs,
-          inflation_rate = inflation_rate,
-          inflation_method = inflation_method
-        )
-      }
-      r <- results
-    }
     
   })
   
@@ -941,8 +841,12 @@ server <- function(input, output, session) {
       filter(!in_college) %>%
       select(year, total_contribution, total_growth, total_balance)
     
-    investment_data_long <- melt(investment_data, id.vars = "year", 
-                                 measure.vars = c("total_contribution", "total_growth"))
+    investment_data_long <- investment_data %>%
+      tidyr::pivot_longer(
+        cols = c(total_contribution, total_growth),
+        names_to = "variable",
+        values_to = "value"
+      )
     
     ggplot(investment_data_long, aes(x = year, y = value, fill = variable)) +
       geom_bar(stat = "identity") +
@@ -962,7 +866,12 @@ server <- function(input, output, session) {
       filter(in_college) %>%
       select(tidyselect::all_of(c(cost_varvals, "year")))
     
-    cost_data_long <- melt(cost_data, id.vars = "year", measure.vars = cost_varvals)
+    cost_data_long <- cost_data %>%
+      tidyr::pivot_longer(
+        cols = tidyselect::all_of(cost_varvals),
+        names_to = "variable",
+        values_to = "value"
+      )
     
     # Map variable names to readable labels
     cost_data_long$variable <- factor(cost_data_long$variable,
@@ -989,13 +898,17 @@ server <- function(input, output, session) {
     # Calculate primary and secondary costs per year
     cost_data <- cost_data %>%
       mutate(
-        primary_costs = rowSums(across(all_of(primary_cost_dictionary))),
-        secondary_costs = rowSums(across(all_of(secondary_cost_dictionary)))
+        primary_costs = rowSums(pick(all_of(primary_cost_varvals))),
+        secondary_costs = rowSums(pick(all_of(secondary_cost_varvals)))
       ) %>%
       select(year, primary_costs, secondary_costs)
     
-    cost_data_long <- melt(cost_data, id.vars = "year", 
-                           measure.vars = c("primary_costs", "secondary_costs"))
+    cost_data_long <- cost_data %>%
+      tidyr::pivot_longer(
+        cols = c(primary_costs, secondary_costs),
+        names_to = "variable",
+        values_to = "value"
+      )
     
     cost_data_long$variable <- factor(cost_data_long$variable,
                                       levels = c("primary_costs", "secondary_costs"),
@@ -1018,8 +931,12 @@ server <- function(input, output, session) {
       filter(!in_college) %>%
       select(year, primary_contribution, secondary_contribution)
     
-    investment_data_long <- melt(investment_data, id.vars = "year", 
-                                 measure.vars = c("primary_contribution", "secondary_contribution"))
+    investment_data_long <- investment_data %>%
+      tidyr::pivot_longer(
+        cols = c(primary_contribution, secondary_contribution),
+        names_to = "variable",
+        values_to = "value"
+      )
     
     investment_data_long$variable <- factor(investment_data_long$variable,
                                             levels = c("primary_contribution", "secondary_contribution"),
@@ -1040,10 +957,11 @@ server <- function(input, output, session) {
     
     cost_data <- results()$working_final %>%
       filter(in_college) %>%
-      select(year, age, tidyselect::all_of(cost_dictionary))
+      select(year, age, tidyselect::all_of(cost_varvals)) %>%
+      mutate(Total = rowSums(pick(all_of(cost_varvals))))
     
-    # Rename columns for display
-    names(cost_data) <- c(cost_varlabs, "Total")
+    display_names <- c("Year", "Age", cost_varlabs, "Total")
+    names(cost_data) <- display_names
     
     datatable(cost_data, options = list(
       pageLength = 5,
@@ -1054,17 +972,16 @@ server <- function(input, output, session) {
       formatCurrency(columns = c(cost_varlabs, "Total"))
   })
   
-  # Cost details table
+  # Cost details table 
   output$cost_details_table <- renderDT({
     req(results())
     
     cost_data <- results()$working_final %>%
       filter(in_college) %>%
-      select(year, age, tidyselect::all_of(cost_dictionary))
+      select(year, age, tidyselect::all_of(cost_varvals)) %>%
+      mutate(Total = rowSums(pick(all_of(cost_varvals))))
     
-    # Rename columns for display
-    cost_data <- cost_data %>%
-      dplyr::mutate(Total = rowSums(select({.}, tidyselect::all_of(cost_varlabs))))
+    names(cost_data) <- c("Year", "Age", cost_varlabs, "Total")
     
     datatable(cost_data, options = list(
       pageLength = nrow(cost_data),
@@ -1193,19 +1110,25 @@ server <- function(input, output, session) {
     # Prepare data for plot
     cumulative_data <- investment_data %>%
       select(year, cumulative_primary, cumulative_secondary) %>%
-      rename(
-        "Primary Fund" = cumulative_primary,
-        "Secondary Fund" = cumulative_secondary
+      tidyr::pivot_longer(
+        cols = c(cumulative_primary, cumulative_secondary),
+        names_to = "variable",
+        values_to = "value"
       ) %>%
-      melt(id.vars = "year")
+      mutate(variable = factor(variable,
+                               levels = c("cumulative_primary", "cumulative_secondary"),
+                               labels = c("Primary Fund", "Secondary Fund")))
     
     annual_data <- investment_data %>%
       select(year, primary_contribution, secondary_contribution) %>%
-      rename(
-        "Primary Fund" = primary_contribution,
-        "Secondary Fund" = secondary_contribution
+      tidyr::pivot_longer(
+        cols = c(primary_contribution, secondary_contribution),
+        names_to = "variable",
+        values_to = "value"
       ) %>%
-      melt(id.vars = "year")
+      mutate(variable = factor(variable,
+                               levels = c("primary_contribution", "secondary_contribution"),
+                               labels = c("Primary Fund", "Secondary Fund")))
     
     # Create two plots
     p1 <- ggplot(annual_data, aes(x = year, y = value, fill = variable)) +
