@@ -37,6 +37,12 @@ ui <- dashboardPage(
                                                      "Calculate Required Investment", 
                                                      class = "btn-primary", 
                                                      width = "100%"))),
+                    fluidRow(column(3, numericInput("investment_nextyear", 
+                                                    "Next Year of Investing", 
+                                                    value = 2026, 
+                                                    min = 2025, 
+                                                    max = 2050, 
+                                                    step = 1))),
                     fluidRow(column(3, numericInput("investment_startyear", 
                                                     "Year at Start of Investing", 
                                                     value = 2025, 
@@ -105,7 +111,7 @@ ui <- dashboardPage(
                     solidHeader = TRUE,
                     width = 12,
                     p("Enter known costs for future college expenses. Additional rows will be automatically added as needed."),
-                    DTOutput("costs_table"),
+                    DTOutput("entry_table"),
                     actionButton("add_year", "Add Another Year", class = "btn-success"))),
               
               # Summary metrics panel
@@ -230,6 +236,7 @@ server <- function(input, output, session) {
       college_studyyears = 4, 
       investment_startage = 0, 
       college_startage = 18, 
+      investment_nextyear = 2026,
       investment_startyear = 2025, 
       inflation_method = "historical",
       inflation_rate = 4, 
@@ -261,20 +268,22 @@ server <- function(input, output, session) {
   cost_varlabs <- names(cost_dictionary)
   primary_cost_varlabs <- names(primary_cost_dictionary)
   secondary_cost_varlabs <- names(secondary_cost_dictionary)
-
+  
   primary_cost_varvals <- unname(primary_cost_dictionary)
   secondary_cost_varvals <- unname(secondary_cost_dictionary)
   cost_varvals <- unname(cost_dictionary)
-
+  
   if (FALSE) {
     # Guarded clause for future dev or troubleshooting
-    costs_df <- function(reacting_costs = NULL) {
-      if (!is.null(reacting_costs)) {
+    entry_df <- function(reacted_df = NULL) {
+      if (!is.null(reacted_df)) {
         current_costs
       } else {
         tibble::tibble(
           year = c(2025, 2026),
           age = c(0, 1),
+          primary_balance = c(0, 6000), 
+          secondary_balance = c(0, 0),
           cost_tuition = c(10086, 10908),
           cost_fees = c(1772, 1800),
           cost_housing = c(9562, 10290),
@@ -288,9 +297,11 @@ server <- function(input, output, session) {
   }
   
   # Initial costs data frame
-  costs_df <- reactiveVal(tibble::tibble(
+  entry_df <- reactiveVal(tibble::tibble(
     year = c(2025, 2026),
     age = c(0, 1),
+    primary_balance = c(0, 6000), 
+    secondary_balance = c(0, 0),
     cost_tuition = c(10086, 10908),
     cost_fees = c(1772, 1800),
     cost_housing = c(9562, 10290),
@@ -300,24 +311,24 @@ server <- function(input, output, session) {
     cost_personal = c(1200, 1200)
   ))
   
-  # Update year and age in costs table when parameters change
+  # Update year and age in entry table when parameters change
   observe({
     req(input$investment_startyear)
     req(input$investment_startage)
     
-    reacting_costs <- costs_df()
+    reacted_df <- entry_df()
     
     # Update years and ages
     investment_startyear <- input$investment_startyear
     investment_startage <- input$investment_startage
     
-    new_years <- seq(from = investment_startyear, length.out = nrow(reacting_costs))
-    new_ages <- seq(from = investment_startage, length.out = nrow(reacting_costs))
+    new_years <- seq(from = investment_startyear, length.out = nrow(reacted_df))
+    new_ages <- seq(from = investment_startage, length.out = nrow(reacted_df))
     
-    reacting_costs$year <- new_years
-    reacting_costs$age <- new_ages
+    reacted_df$year <- new_years
+    reacted_df$age <- new_ages
     
-    costs_df(reacting_costs)
+    entry_df(reacted_df)
   })
   
   # --------------------------------------------------------------------------
@@ -327,19 +338,19 @@ server <- function(input, output, session) {
   if (FALSE) {
     
     calculated_historical_inflation <- function() {
-      reacting_costs <- costs_df()
+      reacted_df <- entry_df()
       
       # Need at least 2 rows to compute historical inflation
-      if (nrow(reacting_costs) < 2) {
+      if (nrow(reacted_df) < 2) {
         return(NULL)
       }
       
       # Compute total cost of attendance for each row
-      row_costs <- rowSums(reacting_costs[, cost_varvals, drop = FALSE])
+      row_costs <- rowSums(reacted_df[, cost_varvals, drop = FALSE])
       
       first_cost <- row_costs[1]
       last_cost   <- row_costs[length(row_costs)]
-      n_years       <- nrow(reacting_costs) - 1
+      n_years       <- nrow(reacted_df) - 1
       
       # Guard against zero or negative starting cost
       if (is.na(first_cost) || first_cost <= 0) {
@@ -354,19 +365,19 @@ server <- function(input, output, session) {
   }
   
   calculated_historical_inflation <- reactive({
-    reacting_costs <- costs_df()
+    reacted_df <- entry_df()
     
     # Need at least 2 rows to compute historical inflation
-    if (nrow(reacting_costs) < 2) {
+    if (nrow(reacted_df) < 2) {
       return(NULL)
     }
     
     # Compute total cost of attendance for each row
-    row_costs <- rowSums(reacting_costs[, cost_varvals, drop = FALSE])
+    row_costs <- rowSums(reacted_df[, cost_varvals, drop = FALSE])
     
     first_cost <- row_costs[1]
     last_cost   <- row_costs[length(row_costs)]
-    n_years       <- nrow(reacting_costs) - 1
+    n_years       <- nrow(reacted_df) - 1
     
     # Guard against zero or negative starting cost
     if (is.na(first_cost) || first_cost <= 0) {
@@ -418,8 +429,8 @@ server <- function(input, output, session) {
   # --------------------------------------------------------------------------
   output$historical_inflation_display <- renderUI({
     inflation_historical <- calculated_historical_inflation()
-    reacting_costs <- costs_df()
-
+    reacted_df <- entry_df()
+    
     if (!is.null(inflation_historical)) {
       tags$div(
         style = "padding: 8px 12px; background-color: #d5edda; border: 1px solid #c3e6cb; border-radius: 4px; margin-top: 5px;",
@@ -431,7 +442,7 @@ server <- function(input, output, session) {
         tags$br(),
         tags$small(
           style = "color: #155724;",
-          sprintf("Computed as CAGR from %d year(s) of entered cost data", nrow(reacting_costs))
+          sprintf("Computed as CAGR from %d year(s) of entered cost data", nrow(reacted_df))
         )
       )
     } else {
@@ -452,9 +463,9 @@ server <- function(input, output, session) {
   })
   
   # Display costs table
-  output$costs_table <- renderDT({
+  output$entry_table <- renderDT({
     datatable(
-      costs_df(),
+      entry_df(),
       editable = TRUE,
       options = list(
         pageLength = 5,
@@ -464,19 +475,20 @@ server <- function(input, output, session) {
     )
   })
   
-  # Update costs data frame when cells are edited
-  observeEvent(input$costs_table_cell_edit, {
-    info <- input$costs_table_cell_edit
-    reacting_costs <- costs_df()
-    reacting_costs[info$row, info$col] <- info$value
-    costs_df(reacting_costs)
+  # FIX 4: Update costs data frame when cells are edited
+  # Changed from input$costs_table_cell_edit to input$entry_table_cell_edit
+  # to match the renamed DT output ID
+  observeEvent(input$entry_table_cell_edit, {
+    info <- input$entry_table_cell_edit
+    reacted_df <- entry_df()
+    reacted_df[info$row, info$col] <- info$value
+    entry_df(reacted_df)
   })
   
   # Add a new year to the costs table
   observeEvent(input$add_year, {
-    reacting_costs <- costs_df()
-    last_row <- nrow(reacting_costs)
-    new_row <- reacting_costs[last_row, ]
+    reacted_df <- entry_df()
+    new_row <- reacted_df[nrow(reacted_df), ]
     
     # Increment year and age
     new_row$year <- new_row$year + 1
@@ -488,7 +500,7 @@ server <- function(input, output, session) {
       new_row[[col]] <- new_row[[col]] * inflation_factor
     }
     
-    costs_df(rbind(reacting_costs, new_row))
+    entry_df(rbind(reacted_df, new_row))
   })
   
   # Calculate results when the button is clicked
@@ -498,6 +510,7 @@ server <- function(input, output, session) {
     college_studyyears <- input$college_studyyears
     investment_startage <- input$investment_startage
     college_startage <- input$college_startage
+    investment_nextyear <- input$investment_nextyear
     investment_startyear <- input$investment_startyear
     inflation_rate <- effective_inflation()
     contribution_rate <- input$contribution_rate / 100
@@ -521,10 +534,7 @@ server <- function(input, output, session) {
     }
     
     # Extract costs from the table
-    reacting_costs <- costs_df()
-    
-    # Create named lists for each cost type
-    reacted_costs <- reacting_costs
+    reacted_df <- entry_df()
     
     # Calculate age and year values
     college_endage <- college_startage + college_studyyears - 1
@@ -549,6 +559,7 @@ server <- function(input, output, session) {
         college_studyyears = college_studyyears,
         investment_startage = investment_startage,
         college_startage = college_startage,
+        investment_nextyear = investment_nextyear,
         investment_startyear = investment_startyear,
         college_endage = college_endage,
         college_endyear = college_endyear,
@@ -560,27 +571,22 @@ server <- function(input, output, session) {
     working_01 <- working_00 %>% 
       # Indicate if in in_college during eligible range of years/ages
       dplyr::mutate(in_college = analysis_years %in% college_years) %>% 
-      # Join reacted_costs
-      dplyr::left_join(reacted_costs) %>% 
+      # Join reacted_df
+      dplyr::left_join(reacted_df) %>% 
       dplyr::mutate(primary_cost = rowSums(select({.}, tidyselect::all_of(unname(primary_cost_dictionary))))) %>% 
       dplyr::mutate(secondary_cost = rowSums(select({.}, tidyselect::all_of(unname(secondary_cost_dictionary))))) %>% 
       dplyr::mutate(cost_total = primary_cost + secondary_cost) %>% 
-      # Add constants
-      dplyr::mutate(inflation_rate = inflation_rate) %>% 
-      dplyr::mutate(contribution_rate = contribution_rate) %>% 
-      dplyr::mutate(primary_rate = primary_rate) %>% 
-      dplyr::mutate(secondary_rate = secondary_rate) %>% 
+      # FIX 2: Use 0 instead of 1 for known-data rows so that factor = 1 + 0 = 1 (no change)
+      # Previously used 1, which made factor = 1 + 1 = 2, doubling all indices
+      dplyr::mutate(inflation_rate = ifelse(!is.na(cost_tuition), 0, inflation_rate)) %>% 
+      dplyr::mutate(contribution_rate = ifelse(!is.na(cost_tuition), 0, contribution_rate)) %>% 
+      dplyr::mutate(primary_rate = ifelse(!is.na(cost_tuition), 0, primary_rate)) %>% 
+      dplyr::mutate(secondary_rate = ifelse(!is.na(cost_tuition), 0, secondary_rate)) %>% 
       # Add and update multipliers 
-      dplyr::mutate(inflation_factor = 1 + inflation_rate) %>% 
-      dplyr::mutate(contribution_factor = 1 + contribution_rate) %>% 
-      dplyr::mutate(primary_factor = 1 + primary_rate) %>% 
-      dplyr::mutate(secondary_factor = 1 + secondary_rate) %>% 
-      # Update with is.na
-      dplyr::mutate(inflation_factor = ifelse(!is.na(cost_tuition), 1, inflation_factor)) %>% 
-      # Update with row_number
-      dplyr::mutate(primary_factor = ifelse(dplyr::row_number() == 1, 1, primary_factor)) %>% 
-      dplyr::mutate(contribution_factor = ifelse(dplyr::row_number() == 1, 1, contribution_factor)) %>% 
-      dplyr::mutate(secondary_factor = ifelse(dplyr::row_number() == 1, 1, secondary_factor)) %>% 
+      dplyr::mutate(inflation_factor = ifelse(dplyr::row_number() == 1, 1, 1 + inflation_rate)) %>% 
+      dplyr::mutate(contribution_factor = ifelse(dplyr::row_number() == 1, 1, 1 + contribution_rate)) %>% 
+      dplyr::mutate(primary_factor = ifelse(dplyr::row_number() == 1, 1, 1 + primary_rate)) %>% 
+      dplyr::mutate(secondary_factor = ifelse(dplyr::row_number() == 1, 1, 1 + secondary_rate)) %>% 
       # Calculate cumprod to facilitate calculation of inflated values
       dplyr::mutate(inflation_index = round(cumprod(inflation_factor), 6)) %>% 
       dplyr::mutate(contribution_index = round(cumprod(contribution_factor), 6)) %>% 
@@ -591,7 +597,7 @@ server <- function(input, output, session) {
       dplyr::mutate(dplyr::across(tidyselect::contains("cost"), ~ inflation_index * .x)) %>% 
       # Calculate cumprod_growth
       dplyr::mutate(primary_revindex = primary_factor ^ pmax(rev(dplyr::row_number()) - college_studyyears, 0)) %>% 
-      dplyr::mutate(secondary_revindex = secondary_factor ^ pmax(rev(dplyr::row_number()) - college_studyyears, 0))
+      dplyr::mutate(secondary_revindex = secondary_factor ^ pmax(rev(dplyr::row_number()) - college_studyyears, 0)) 
     
     college_category_costs <- working_01 %>% 
       dplyr::filter(year %in% college_years) %>% 
@@ -631,36 +637,68 @@ server <- function(input, output, session) {
       
       # One value in col
       college_startage <- df[[col_college_startage]]
-      
-      # Many values in col
       index <- df[[col_index]]
       age <- df[[col_age]]
-      cost <- df[[col_cost]]
-      
-      rate <- df[[col_rate]]
       contribution <- ifelse(age < college_startage, contribution_seed * index, 0)
-      df[[col_contribution]] <- contribution
+      
+      # Many values in col
+      cost <- df[[col_cost]]
+      rate <- df[[col_rate]]
       
       # Initialize vectors for calculated values
       growth <- vector(mode = "numeric", length = nrow(df)) 
-      balance_current <- vector(mode = "numeric", length = nrow(df)) 
+      
+      balance <- df[[col_balance]]
+      
+      n_balance_history <- length(na.omit(balance))
       
       i <- NULL
       # Calculate fund growth and balance
       for (i in seq_len(nrow(df))) {
         
-        contribution_current <- if (age[i] < college_startage[i]) { contribution[i] } else { ( (-1) * (cost[i])) }
-        # Get previous balance (0 for first year)
-        balance_previous <- if (i > 1) { balance_current[i-1] } else { 0 }
         # Calculate fund growth based on formula
-        growth[i] <- (contribution_current + balance_previous) * rate[i]
+        contribution_current <- if (i <= n_balance_history) {
+          # TODO: back-calculate
+          0
+        } else {
+          if (age[i] < college_startage[i]) { 
+            contribution[i] 
+          } else { 
+            ( (-1) * (cost[i])) 
+          }
+        }
+        
+        # Get previous balance (0 for first year)
+        balance_previous <- if (i == 1) {
+          0
+        } else {
+          balance[i-1]
+        }
+        
+        # Calculate fund growth based on formula
+        if (i <= n_balance_history) {
+          # TODO: back-calculate
+          growth[i] <- 0
+        } else {
+          growth[i] <- (balance_previous + contribution_current) * rate[i]
+        }
+        
         # Update balance
-        balance_current[i] <- balance_previous + contribution_current + growth[i]
+        if (i <= n_balance_history) {
+          balance[i] <- balance[i] 
+        } else {
+          balance[i] <- balance_previous + contribution_current + growth[i]
+        }
+        
         
       }
       
+      # FIX 3: Assign the full contribution vector, not just the scalar from the
+      # last loop iteration. The original code assigned contribution_current which
+      # is a single value that R would recycle across all rows.
+      df[[col_contribution]] <- contribution
       df[[col_growth]] <- growth
-      df[[col_balance]] <- balance_current
+      df[[col_balance]] <- balance
       return(df)
     }
     
@@ -669,7 +707,6 @@ server <- function(input, output, session) {
       # Calculate required initial investment for expenses
       primary_contribution_seed <- 1
       primary_fund_balance <- 0
-      df_loop <- working_01
       
       if (FALSE) {
         # Guarded clause for future dev or troubleshooting
@@ -685,7 +722,14 @@ server <- function(input, output, session) {
         col_balance = "primary_balance"
       }
       
-      while ((college_primary_cost - primary_fund_balance) > 0) {
+      while ((primary_contribution_seed < 19999) && (college_primary_cost - primary_fund_balance) > 0) {
+        
+        # FIX 1: Reset df_loop from working_01 each iteration so that the
+        # original NA balance values are preserved. Without this, after the first
+        # iteration the balance column is fully populated and n_balance_history
+        # equals nrow(df), causing the seed increment to have no effect.
+        df_loop <- working_01
+        
         df_loop <- calculate_growth(
           df = df_loop, 
           col_index = "contribution_index",
@@ -717,7 +761,6 @@ server <- function(input, output, session) {
       # Calculate required initial investment for expenses
       secondary_contribution_seed <- 1
       secondary_fund_balance <- 0
-      df_loop <- working_01
       
       if (FALSE) {
         # Guarded clause for future dev or troubleshooting
@@ -733,7 +776,11 @@ server <- function(input, output, session) {
         col_balance = "secondary_balance"
       }
       
-      while ((college_secondary_cost - secondary_fund_balance) > 0) {
+      while ((secondary_contribution_seed < 19999) && (college_secondary_cost - secondary_fund_balance) > 0) {
+        
+        # FIX 1 (continued): Same reset for secondary fund loop
+        df_loop <- working_01
+        
         df_loop <- calculate_growth(
           df = df_loop, 
           col_index = "contribution_index",
@@ -1016,7 +1063,8 @@ server <- function(input, output, session) {
       select(year, age, tidyselect::all_of(cost_dictionary))
     
     # Rename columns for display
-    names(cost_data) <- c(cost_varlabs, "Total")
+    cost_data <- cost_data %>%
+      dplyr::mutate(Total = rowSums(select({.}, tidyselect::all_of(cost_varlabs))))
     
     datatable(cost_data, options = list(
       pageLength = nrow(cost_data),
