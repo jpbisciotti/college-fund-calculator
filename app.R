@@ -114,7 +114,8 @@ ui <- dashboardPage(
                     p("Enter known costs for future college expenses. Additional rows will be automatically added as needed."),
                     p(tags$em("Note: Year and Age columns are calculated automatically and cannot be edited. Balance and cost columns accept non-negative numbers.")),
                     DTOutput("entry_table"),
-                    actionButton("add_year", "Add Another Year", class = "btn-success"))),
+                    actionButton("add_year", "Add Another Year", class = "btn-success"),
+                    actionButton("remove_year", "Remove Last Year", class = "btn-danger"))),
               
               # Summary metrics panel
               fluidRow(valueBoxOutput("total_cost_box", width = 4),
@@ -433,6 +434,18 @@ server <- function(input, output, session) {
     }
     
     entry_df(rbind(reacted_df, new_row))
+  })
+  
+  # Remove the last year from the costs table
+  observeEvent(input$remove_year, {
+    reacted_df <- entry_df()
+    
+    if (nrow(reacted_df) <= 1) {
+      showNotification("Cannot remove the last remaining row.", type = "warning")
+      return()
+    }
+    
+    entry_df(reacted_df[-nrow(reacted_df), ])
   })
   
   # Calculate results when the button is clicked
