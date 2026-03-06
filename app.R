@@ -265,18 +265,18 @@ server <- function(input, output, session) {
   
   # Initial costs data frame
   entry_df <- reactiveVal(tibble::tibble(
-    year = c(2025, 2026),
-    age = c(0, 1),
-    primary_balance = c(0, 6000), 
-    secondary_balance = c(0, 0),
-    cost_tuition = c(10086, 10908),
-    cost_fees = c(1772, 1800),
-    cost_housing = c(9562, 10290),
-    cost_meals = c(6396, 7180),
-    cost_books = c(1250, 1250),
-    cost_transport = c(1514, 1514),
-    cost_personal = c(1200, 1200)
-  ))
+    year = c(2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026),
+    age = c(-7, -6, -5, -4, -3, -2, -1, 0, 1),
+    primary_balance = c(0, 0, 0, 0, 0, 0, 0, 0, 6000), 
+    secondary_balance = c(0, 0, 0, 0, 0, 0, 0, 0, 0),
+    cost_tuition = c(9112, 9191, 9270, 9421, 9660, 9889, 10086, 10086, 10908),
+    cost_fees = c(1484, 1497, 1509, 1534, 1573, 1616, 1722, 1772, 1800),
+    cost_housing = c(7425, 7590, 7754, 8072, 8860, 9228, 9562, 9562, 10290),
+    cost_meals = c(5004, 5062, 5120, 5276, 5716, 6188, 6396, 6396, 7180),
+    cost_books = c(1250, 1250, 1250, 1250, 1250, 1250, 1250, 1250, 1250),
+    cost_transport = c(1413, 1413, 1413, 1413, 1444, 1514, 1514, 1514, 1514),
+    cost_personal = c(1110, 1110, 1110, 1110, 1135, 1200, 1200, 1200, 1200)
+  ) |> dplyr::filter(age >= 0))
   
   # Update year and age in entry table when parameters change
   observe({
