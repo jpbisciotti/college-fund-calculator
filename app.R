@@ -97,7 +97,7 @@ ui <- dashboardPage(
                                                      uiOutput("historical_inflation_display"
                                                      ))
                     )),
-                    # calculate button to bottom of form 
+                    # calculate button at bottom of form 
                     fluidRow(column(12, actionButton("calculate", 
                                                      "Calculate Required Investment", 
                                                      class = "btn-primary", 
@@ -504,12 +504,10 @@ server <- function(input, output, session) {
       dplyr::mutate(in_college = analysis_years %in% college_years) %>% 
       # Join with explicit `by` to avoid implicit column matching
       dplyr::left_join(reacted_df, by = c("year", "age")) %>% 
-      # pick() for idiomatic dplyr 1.1+
       dplyr::mutate(primary_cost = rowSums(pick(tidyselect::all_of(unname(primary_cost_dictionary))))) %>% 
       dplyr::mutate(secondary_cost = rowSums(pick(tidyselect::all_of(unname(secondary_cost_dictionary))))) %>% 
       dplyr::mutate(cost_total = primary_cost + secondary_cost) %>% 
-      # Use 0 for known-data rows so that factor = 1 + 0 = 1 (no change)
-      # Do not use 1, which made factor = 1 + 1 = 2, doubling all indices
+      # Use 0 instead of 1 for known-data rows so that factor = 1 + 0 = 1 (no change)
       dplyr::mutate(inflation_rate = ifelse(!is.na(cost_tuition), 0, inflation_rate)) %>% 
       dplyr::mutate(contribution_rate = ifelse(!is.na(cost_tuition), 0, contribution_rate)) %>% 
       dplyr::mutate(primary_rate = ifelse(!is.na(cost_tuition), 0, primary_rate)) %>% 
@@ -641,9 +639,9 @@ server <- function(input, output, session) {
     # --------------------------------------------------------------------------
     # Binary search for contribution seed instead of brute-force loop.
     # The relationship between seed and final balance is monotonic, so binary
-    # search finds the answer in ~14 iterations instead of thousands.
+    # search finds the answer in ~14 iterations.
     # --------------------------------------------------------------------------
-    find_seed <- ffunction(working_df, target_cost, col_index, col_contribution,
+    find_seed <- function(working_df, target_cost, col_index, col_contribution,
                           col_age, col_college_startage, col_cost, col_rate,
                           col_growth, col_balance, max_seed = 19999) {
       lo <- 1
@@ -952,6 +950,7 @@ server <- function(input, output, session) {
   })
   
   # College costs table
+  # select raw cost_varvals, compute Total, then rename all columns explicitly.
   output$college_costs_table <- renderDT({
     req(results())
     
@@ -972,7 +971,8 @@ server <- function(input, output, session) {
       formatCurrency(columns = c(cost_varlabs, "Total"))
   })
   
-  # Cost details table 
+  # Cost details table
+  # use cost_varvals consistently, compute Total, then rename all at once.
   output$cost_details_table <- renderDT({
     req(results())
     
